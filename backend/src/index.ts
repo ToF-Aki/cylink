@@ -145,13 +145,13 @@ const deleteSessionFromDynamo = async (sessionId: string): Promise<void> => {
 const getSession = async (sessionId: string): Promise<Session | null> => {
   // キャッシュをチェック
   const cached = sessionCache.get(sessionId);
-  if (cached) {
+  if (cached !== undefined) {
     return cached;
   }
 
   // DynamoDBから取得
   const session = await getSessionFromDynamo(sessionId);
-  if (session) {
+  if (session !== null) {
     sessionCache.set(sessionId, session);
     return session;
   }
