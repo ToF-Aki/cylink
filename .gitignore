@@ -48,3 +48,6 @@ logs/
 
 # Build files
 *.tsbuildinfo
+
+# Data files (runtime generated)
+backend/data/
