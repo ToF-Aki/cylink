@@ -333,8 +333,10 @@ export default function EventPage({ params }: { params: Promise<{ sessionId: str
         clearUserStrobe();
         applyEffect(data.color, data.effect);
         setIsControlLocked(data.isProgramRunning);
+      } else {
+        // manualモードの場合はユーザー操作を許可
+        setIsControlLocked(false);
       }
-      // manualモードの場合はユーザー操作を優先
     });
 
     newSocket.on('color-change', (data: { color: string; effect?: EffectType }) => {
