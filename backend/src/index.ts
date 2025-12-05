@@ -144,17 +144,18 @@ const deleteSessionFromDynamo = async (sessionId: string): Promise<void> => {
 // セッション取得（キャッシュ優先、なければDynamoDB）
 const getSession = async (sessionId: string): Promise<Session | null> => {
   // キャッシュをチェック
-  let session = sessionCache.get(sessionId);
-  if (session) {
-    return session;
+  const cached = sessionCache.get(sessionId);
+  if (cached) {
+    return cached;
   }
 
   // DynamoDBから取得
-  session = await getSessionFromDynamo(sessionId);
+  const session = await getSessionFromDynamo(sessionId);
   if (session) {
     sessionCache.set(sessionId, session);
+    return session;
   }
-  return session;
+  return null;
 };
 
 // セッション保存（キャッシュとDynamoDB両方）
