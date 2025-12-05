@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useEffect, useRef, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { QRCodeSVG } from 'qrcode.react';
 import { io, Socket } from 'socket.io-client';
 import { v4 as uuidv4 } from 'uuid';
@@ -52,8 +52,9 @@ const parseTime = (timeStr: string): number => {
   return (parseInt(match[1], 10) * 60 + parseInt(match[2], 10)) * 1000;
 };
 
-export default function AdminPage() {
+function AdminPageContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [eventName, setEventName] = useState('');
   const [sessionId, setSessionId] = useState('');
   const [currentColor, setCurrentColor] = useState('#FFFFFF');
@@ -82,7 +83,64 @@ export default function AdminPage() {
 
   useEffect(() => {
     setMounted(true);
-  }, []);
+
+    // URLパラメータからセッションIDを取得
+    const existingSessionId = searchParams.get('session');
+    if (existingSessionId) {
+      loadExistingSession(existingSessionId);
+    }
+  }, [searchParams]);
+
+  // 既存セッションを読み込む
+  const loadExistingSession = async (id: string) => {
+    setIsLoading(true);
+    try {
+      const response = await fetch(`${API_URL}/api/sessions/${id}`);
+      if (!response.ok) {
+        throw new Error('Session not found');
+      }
+      const data = await response.json();
+      const session = data.session;
+
+      setSessionId(id);
+      setEventName(session.name);
+      setCurrentColor(session.color || '#FFFFFF');
+      setCurrentEffect(session.effect || 'none');
+      setMode(session.mode || 'manual');
+      setIsProgramRunning(session.isProgramRunning || false);
+      setIsCreated(true);
+
+      if (session.program) {
+        setProgram(session.program);
+      }
+
+      // WebSocket接続
+      const newSocket = io(API_URL, { transports: ['websocket', 'polling'] });
+
+      newSocket.on('connect', () => {
+        newSocket.emit('join-session', { sessionId: id, isAdmin: true });
+      });
+
+      newSocket.on('user-count', (d: { count: number }) => setConnectedUsers(d.count));
+      newSocket.on('sync-state', (d: { mode: SessionMode; color: string; effect: EffectType; isProgramRunning: boolean }) => {
+        setMode(d.mode);
+        setCurrentColor(d.color);
+        setCurrentEffect(d.effect);
+        setIsProgramRunning(d.isProgramRunning);
+      });
+      newSocket.on('mode-change', (d: { mode: SessionMode }) => setMode(d.mode));
+      newSocket.on('program-start', () => setIsProgramRunning(true));
+      newSocket.on('program-stop', () => setIsProgramRunning(false));
+
+      setSocket(newSocket);
+    } catch (error) {
+      console.error('セッション読み込みエラー:', error);
+      alert('セッションが見つかりませんでした');
+      router.push('/events');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const eventUrl = sessionId
     ? `${typeof window !== 'undefined' ? window.location.origin : ''}/event/${sessionId}`
@@ -587,5 +645,13 @@ export default function AdminPage() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function AdminPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-[var(--bg-primary)] flex items-center justify-center text-[var(--text-secondary)]">読み込み中...</div>}>
+      <AdminPageContent />
+    </Suspense>
   );
 }

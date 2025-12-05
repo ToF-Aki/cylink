@@ -255,6 +255,42 @@ app.get('/api/time', (req, res) => {
   res.json({ serverTime: Date.now() });
 });
 
+// イベント一覧取得API
+app.get('/api/sessions', async (req, res) => {
+  try {
+    const result = await docClient.send(new ScanCommand({
+      TableName: SESSIONS_TABLE,
+    }));
+
+    const sessions = (result.Items || []).map(item => {
+      const { sessionId, ttl, ...sessionData } = item;
+      return sessionData as Session;
+    }).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+    res.json({ sessions });
+  } catch (error) {
+    console.error('DynamoDB scan error:', error);
+    res.status(500).json({ error: 'Failed to fetch sessions' });
+  }
+});
+
+// イベント削除API
+app.delete('/api/sessions/:sessionId', async (req, res) => {
+  const { sessionId } = req.params;
+
+  try {
+    // キャッシュから削除
+    sessionCache.delete(sessionId);
+    // DynamoDBから削除
+    await deleteSessionFromDynamo(sessionId);
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Session delete error:', error);
+    res.status(500).json({ error: 'Failed to delete session' });
+  }
+});
+
 // 接続数ブロードキャスト（バッチ処理で最適化）
 const userCountBroadcastQueue = new Map<string, NodeJS.Timeout>();
 

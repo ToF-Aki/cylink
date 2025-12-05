@@ -59,6 +59,22 @@ export default function Home() {
             >
               <span>イベントに参加</span>
             </button>
+
+            <button
+              onClick={() => router.push('/events')}
+              style={{
+                width: '100%',
+                padding: '14px 24px',
+                background: 'transparent',
+                color: 'var(--text-secondary)',
+                border: '1px solid var(--border-secondary)',
+                borderRadius: '12px',
+                fontSize: '16px',
+                cursor: 'pointer',
+              }}
+            >
+              <span>イベント一覧</span>
+            </button>
           </div>
 
           {/* フィーチャー */}

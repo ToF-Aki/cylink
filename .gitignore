@@ -51,3 +51,4 @@ logs/
 
 # Data files (runtime generated)
 backend/data/
+.vercel
