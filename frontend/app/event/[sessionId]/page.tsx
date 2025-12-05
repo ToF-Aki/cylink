@@ -536,29 +536,24 @@ export default function EventPage({ params }: { params: Promise<{ sessionId: str
 
       {/* 下部: manualモード時のコントロール */}
       {mode === 'manual' && (
-        <div className="fixed bottom-0 left-0 right-0 z-50 pb-[env(safe-area-inset-bottom)]">
+        <div className="fixed inset-x-0 bottom-0 z-50 flex flex-col items-center justify-end pb-[env(safe-area-inset-bottom)]">
           <div
-            className={`px-4 pt-8 pb-6 ${mounted ? 'animate-slide-up' : 'opacity-0'}`}
-            style={{
-              background: isDarkBg
-                ? 'linear-gradient(to top, rgba(0,0,0,0.6) 0%, transparent 100%)'
-                : 'linear-gradient(to top, rgba(255,255,255,0.5) 0%, transparent 100%)',
-            }}
+            className={`w-full max-w-sm px-6 pb-8 ${mounted ? 'animate-slide-up' : 'opacity-0'}`}
           >
             {/* 色選択ボタン */}
-            <div className="flex justify-center gap-3 mb-4 flex-wrap">
+            <div className="grid grid-cols-4 gap-3 mb-4">
               {USER_COLORS.map((color) => (
                 <button
                   key={color}
                   onClick={() => handleUserColorSelect(color)}
-                  className={`w-12 h-12 rounded-full transition-all duration-200 active:scale-95 ${
-                    userSelectedColor === color ? 'scale-110' : ''
+                  className={`aspect-square w-full rounded-xl transition-all duration-200 active:scale-90 ${
+                    userSelectedColor === color ? 'scale-105' : ''
                   }`}
                   style={{
                     backgroundColor: color,
                     boxShadow: userSelectedColor === color
-                      ? `0 0 0 2px ${displayColor}, 0 0 0 4px ${textColor}`
-                      : `0 2px 8px ${color}66`,
+                      ? `0 0 0 3px ${displayColor}, 0 0 0 5px ${textColor}`
+                      : `0 4px 12px ${color}44`,
                   }}
                 />
               ))}
@@ -567,15 +562,15 @@ export default function EventPage({ params }: { params: Promise<{ sessionId: str
             {/* ストロボボタン */}
             <button
               onClick={handleUserStrobe}
-              className={`w-full py-4 rounded-2xl font-display font-semibold text-base tracking-wide transition-all duration-200 active:scale-[0.98] ${
+              className={`w-full py-6 rounded-2xl font-display font-bold text-lg tracking-wide transition-all duration-200 active:scale-95 ${
                 isStrobeActive ? 'animate-pulse' : ''
               }`}
               style={{
                 background: isStrobeActive
-                  ? (isDarkBg ? 'rgba(255,255,255,0.25)' : 'rgba(0,0,0,0.15)')
-                  : (isDarkBg ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)'),
+                  ? (isDarkBg ? 'rgba(255,255,255,0.35)' : 'rgba(0,0,0,0.25)')
+                  : (isDarkBg ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.12)'),
                 color: textColor,
-                border: `1px solid ${isDarkBg ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.1)'}`,
+                border: `2px solid ${isDarkBg ? 'rgba(255,255,255,0.35)' : 'rgba(0,0,0,0.2)'}`,
               }}
             >
               {isStrobeActive ? 'ストロボ停止' : 'ストロボ'}
