@@ -535,7 +535,7 @@ export default function EventPage({ params }: { params: Promise<{ sessionId: str
       )}
 
       {/* 下部: manualモード時のコントロール */}
-      {mode === 'manual' && !isControlLocked && (
+      {mode === 'manual' && (
         <div className="fixed bottom-0 left-0 right-0 z-50 pb-[env(safe-area-inset-bottom)]">
           <div
             className={`px-4 pt-8 pb-6 ${mounted ? 'animate-slide-up' : 'opacity-0'}`}
