@@ -180,6 +180,25 @@ app.get('/health', (req, res) => {
   });
 });
 
+// イベント一覧取得API（:sessionIdより先に定義する必要あり）
+app.get('/api/sessions', async (_req, res) => {
+  try {
+    const result = await docClient.send(new ScanCommand({
+      TableName: SESSIONS_TABLE,
+    }));
+
+    const sessions = (result.Items || []).map(item => {
+      const { sessionId, ttl, ...sessionData } = item;
+      return sessionData as Session;
+    }).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+    res.json({ sessions });
+  } catch (error) {
+    console.error('DynamoDB scan error:', error);
+    res.status(500).json({ error: 'Failed to fetch sessions' });
+  }
+});
+
 // セッション作成API
 app.post('/api/sessions', async (req, res) => {
   const { name } = req.body;
@@ -253,25 +272,6 @@ app.get('/api/sessions/:sessionId/program', async (req, res) => {
 // サーバー時刻取得API（同期用）
 app.get('/api/time', (req, res) => {
   res.json({ serverTime: Date.now() });
-});
-
-// イベント一覧取得API
-app.get('/api/sessions', async (req, res) => {
-  try {
-    const result = await docClient.send(new ScanCommand({
-      TableName: SESSIONS_TABLE,
-    }));
-
-    const sessions = (result.Items || []).map(item => {
-      const { sessionId, ttl, ...sessionData } = item;
-      return sessionData as Session;
-    }).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-
-    res.json({ sessions });
-  } catch (error) {
-    console.error('DynamoDB scan error:', error);
-    res.status(500).json({ error: 'Failed to fetch sessions' });
-  }
 });
 
 // イベント削除API
