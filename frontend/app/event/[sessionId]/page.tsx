@@ -536,24 +536,50 @@ export default function EventPage({ params }: { params: Promise<{ sessionId: str
 
       {/* 下部: manualモード時のコントロール */}
       {mode === 'manual' && (
-        <div className="fixed inset-x-0 bottom-0 z-50 flex flex-col items-center justify-end pb-[env(safe-area-inset-bottom)]">
+        <div
+          style={{
+            position: 'fixed',
+            left: 0,
+            right: 0,
+            bottom: 0,
+            zIndex: 50,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            paddingBottom: 'env(safe-area-inset-bottom)',
+          }}
+        >
           <div
-            className={`w-full max-w-sm px-6 pb-8 ${mounted ? 'animate-slide-up' : 'opacity-0'}`}
+            style={{
+              width: '100%',
+              maxWidth: '400px',
+              padding: '0 24px 32px 24px',
+            }}
           >
             {/* 色選択ボタン */}
-            <div className="grid grid-cols-4 gap-3 mb-4">
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(4, 1fr)',
+                gap: '12px',
+                marginBottom: '16px',
+              }}
+            >
               {USER_COLORS.map((color) => (
                 <button
                   key={color}
                   onClick={() => handleUserColorSelect(color)}
-                  className={`aspect-square w-full rounded-xl transition-all duration-200 active:scale-90 ${
-                    userSelectedColor === color ? 'scale-105' : ''
-                  }`}
                   style={{
+                    width: '100%',
+                    aspectRatio: '1',
+                    minHeight: '70px',
+                    borderRadius: '16px',
                     backgroundColor: color,
-                    boxShadow: userSelectedColor === color
-                      ? `0 0 0 3px ${displayColor}, 0 0 0 5px ${textColor}`
-                      : `0 4px 12px ${color}44`,
+                    border: userSelectedColor === color ? `4px solid ${textColor}` : 'none',
+                    boxShadow: `0 4px 12px ${color}66`,
+                    cursor: 'pointer',
+                    transition: 'transform 0.2s',
+                    transform: userSelectedColor === color ? 'scale(1.05)' : 'scale(1)',
                   }}
                 />
               ))}
@@ -562,15 +588,18 @@ export default function EventPage({ params }: { params: Promise<{ sessionId: str
             {/* ストロボボタン */}
             <button
               onClick={handleUserStrobe}
-              className={`w-full py-6 rounded-2xl font-display font-bold text-lg tracking-wide transition-all duration-200 active:scale-95 ${
-                isStrobeActive ? 'animate-pulse' : ''
-              }`}
               style={{
+                width: '100%',
+                padding: '20px',
+                borderRadius: '16px',
+                fontSize: '18px',
+                fontWeight: 'bold',
                 background: isStrobeActive
-                  ? (isDarkBg ? 'rgba(255,255,255,0.35)' : 'rgba(0,0,0,0.25)')
-                  : (isDarkBg ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.12)'),
+                  ? (isDarkBg ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.3)')
+                  : (isDarkBg ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.15)'),
                 color: textColor,
-                border: `2px solid ${isDarkBg ? 'rgba(255,255,255,0.35)' : 'rgba(0,0,0,0.2)'}`,
+                border: `2px solid ${isDarkBg ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.25)'}`,
+                cursor: 'pointer',
               }}
             >
               {isStrobeActive ? 'ストロボ停止' : 'ストロボ'}
