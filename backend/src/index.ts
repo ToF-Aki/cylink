@@ -6,8 +6,8 @@ import dotenv from 'dotenv';
 import { v4 as uuidv4 } from 'uuid';
 import Redis from 'ioredis';
 import { createAdapter } from '@socket.io/redis-adapter';
-import fs from 'fs';
-import path from 'path';
+import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
+import { DynamoDBDocumentClient, GetCommand, PutCommand, UpdateCommand, DeleteCommand, ScanCommand } from '@aws-sdk/lib-dynamodb';
 
 dotenv.config();
 
@@ -19,21 +19,30 @@ const corsOrigins = (process.env.CORS_ORIGIN || 'http://localhost:3000').split('
 app.use(cors({ origin: corsOrigins }));
 app.use(express.json());
 
+// DynamoDB設定
+const dynamoClient = new DynamoDBClient({
+  region: process.env.AWS_REGION || 'ap-northeast-1',
+  credentials: process.env.AWS_ACCESS_KEY_ID ? {
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || '',
+  } : undefined,
+});
+const docClient = DynamoDBDocumentClient.from(dynamoClient);
+const SESSIONS_TABLE = process.env.DYNAMODB_TABLE || 'cylink-sessions';
+
 // Socket.io設定（500人以上対応）
 const io = new Server(httpServer, {
   cors: {
     origin: corsOrigins,
     methods: ['GET', 'POST'],
   },
-  // パフォーマンス最適化（500人対応）
   pingTimeout: 60000,
   pingInterval: 25000,
   transports: ['websocket', 'polling'],
-  // 接続数最適化
   perMessageDeflate: {
-    threshold: 1024, // 1KB以上のメッセージのみ圧縮
+    threshold: 1024,
   },
-  maxHttpBufferSize: 1e6, // 1MB
+  maxHttpBufferSize: 1e6,
   connectTimeout: 45000,
 });
 
@@ -66,14 +75,14 @@ interface Program {
   name: string;
   segments: ProgramSegment[];
   totalDuration: number;
-  createdAt: Date;
-  updatedAt: Date;
+  createdAt: string;
+  updatedAt: string;
 }
 
 interface Session {
   id: string;
   name: string;
-  createdAt: Date;
+  createdAt: string;
   color: string;
   effect: EffectType;
   connectedUsers: number;
@@ -83,34 +92,81 @@ interface Session {
   isProgramRunning: boolean;
 }
 
-const sessions = new Map<string, Session>();
+// メモリキャッシュ（リアルタイム用）
+const sessionCache = new Map<string, Session>();
 
-// プログラムデータ保存ディレクトリ
-const DATA_DIR = process.env.DATA_DIR || './data';
-if (!fs.existsSync(DATA_DIR)) {
-  fs.mkdirSync(DATA_DIR, { recursive: true });
-}
-
-// プログラムをファイルに保存
-const saveProgramToFile = (sessionId: string, program: Program) => {
-  const filePath = path.join(DATA_DIR, `program_${sessionId}.json`);
-  fs.writeFileSync(filePath, JSON.stringify(program, null, 2));
+// DynamoDB操作関数
+const saveSessionToDynamo = async (session: Session): Promise<void> => {
+  try {
+    await docClient.send(new PutCommand({
+      TableName: SESSIONS_TABLE,
+      Item: {
+        sessionId: session.id,
+        ...session,
+        ttl: Math.floor(Date.now() / 1000) + (7 * 24 * 60 * 60), // 7日後に自動削除
+      },
+    }));
+    console.log(`💾 Session saved to DynamoDB: ${session.id}`);
+  } catch (error) {
+    console.error('DynamoDB save error:', error);
+  }
 };
 
-// プログラムをファイルから読み込み
-const loadProgramFromFile = (sessionId: string): Program | null => {
-  const filePath = path.join(DATA_DIR, `program_${sessionId}.json`);
-  if (fs.existsSync(filePath)) {
-    const data = fs.readFileSync(filePath, 'utf-8');
-    return JSON.parse(data);
+const getSessionFromDynamo = async (sessionId: string): Promise<Session | null> => {
+  try {
+    const result = await docClient.send(new GetCommand({
+      TableName: SESSIONS_TABLE,
+      Key: { sessionId },
+    }));
+    if (result.Item) {
+      const { sessionId: _, ttl, ...sessionData } = result.Item;
+      return sessionData as Session;
+    }
+    return null;
+  } catch (error) {
+    console.error('DynamoDB get error:', error);
+    return null;
   }
-  return null;
+};
+
+const deleteSessionFromDynamo = async (sessionId: string): Promise<void> => {
+  try {
+    await docClient.send(new DeleteCommand({
+      TableName: SESSIONS_TABLE,
+      Key: { sessionId },
+    }));
+    console.log(`🗑️ Session deleted from DynamoDB: ${sessionId}`);
+  } catch (error) {
+    console.error('DynamoDB delete error:', error);
+  }
+};
+
+// セッション取得（キャッシュ優先、なければDynamoDB）
+const getSession = async (sessionId: string): Promise<Session | null> => {
+  // キャッシュをチェック
+  let session = sessionCache.get(sessionId);
+  if (session) {
+    return session;
+  }
+
+  // DynamoDBから取得
+  session = await getSessionFromDynamo(sessionId);
+  if (session) {
+    sessionCache.set(sessionId, session);
+  }
+  return session;
+};
+
+// セッション保存（キャッシュとDynamoDB両方）
+const saveSession = async (session: Session): Promise<void> => {
+  sessionCache.set(session.id, session);
+  await saveSessionToDynamo(session);
 };
 
 // ヘルスチェック
 app.get('/health', (req, res) => {
   const roomStats: { [key: string]: number } = {};
-  sessions.forEach((session, id) => {
+  sessionCache.forEach((session, id) => {
     roomStats[id] = session.connectedUsers;
   });
 
@@ -118,40 +174,38 @@ app.get('/health', (req, res) => {
     status: 'ok',
     timestamp: new Date(),
     totalConnections: io.engine.clientsCount,
-    sessions: roomStats
+    sessions: roomStats,
+    dynamoDbTable: SESSIONS_TABLE,
   });
 });
 
 // セッション作成API
-app.post('/api/sessions', (req, res) => {
+app.post('/api/sessions', async (req, res) => {
   const { name } = req.body;
   const sessionId = uuidv4();
-
-  // 既存のプログラムを読み込み
-  const existingProgram = loadProgramFromFile(sessionId);
 
   const session: Session = {
     id: sessionId,
     name: name || 'Unnamed Event',
-    createdAt: new Date(),
+    createdAt: new Date().toISOString(),
     color: '#FFFFFF',
     effect: 'none',
     connectedUsers: 0,
     mode: 'manual',
-    program: existingProgram,
+    program: null,
     programStartTime: null,
     isProgramRunning: false,
   };
 
-  sessions.set(sessionId, session);
+  await saveSession(session);
 
   res.json({ sessionId, session });
 });
 
 // セッション情報取得API
-app.get('/api/sessions/:sessionId', (req, res) => {
+app.get('/api/sessions/:sessionId', async (req, res) => {
   const { sessionId } = req.params;
-  const session = sessions.get(sessionId);
+  const session = await getSession(sessionId);
 
   if (!session) {
     return res.status(404).json({ error: 'Session not found' });
@@ -161,11 +215,11 @@ app.get('/api/sessions/:sessionId', (req, res) => {
 });
 
 // プログラム保存API
-app.post('/api/sessions/:sessionId/program', (req, res) => {
+app.post('/api/sessions/:sessionId/program', async (req, res) => {
   const { sessionId } = req.params;
   const { program } = req.body;
 
-  const session = sessions.get(sessionId);
+  const session = await getSession(sessionId);
   if (!session) {
     return res.status(404).json({ error: 'Session not found' });
   }
@@ -173,29 +227,23 @@ app.post('/api/sessions/:sessionId/program', (req, res) => {
   const newProgram: Program = {
     ...program,
     id: program.id || uuidv4(),
-    createdAt: program.createdAt || new Date(),
-    updatedAt: new Date(),
+    createdAt: program.createdAt || new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
   };
 
   session.program = newProgram;
-  sessions.set(sessionId, session);
-  saveProgramToFile(sessionId, newProgram);
+  await saveSession(session);
 
   res.json({ success: true, program: newProgram });
 });
 
 // プログラム取得API
-app.get('/api/sessions/:sessionId/program', (req, res) => {
+app.get('/api/sessions/:sessionId/program', async (req, res) => {
   const { sessionId } = req.params;
-  const session = sessions.get(sessionId);
+  const session = await getSession(sessionId);
 
   if (!session) {
     return res.status(404).json({ error: 'Session not found' });
-  }
-
-  // メモリになければファイルから読み込み
-  if (!session.program) {
-    session.program = loadProgramFromFile(sessionId);
   }
 
   res.json({ program: session.program });
@@ -210,14 +258,12 @@ app.get('/api/time', (req, res) => {
 const userCountBroadcastQueue = new Map<string, NodeJS.Timeout>();
 
 const broadcastUserCount = (sessionId: string) => {
-  // 既存のタイマーをクリア
   if (userCountBroadcastQueue.has(sessionId)) {
     clearTimeout(userCountBroadcastQueue.get(sessionId)!);
   }
 
-  // 100ms後にブロードキャスト（バッチ処理）
-  const timer = setTimeout(() => {
-    const session = sessions.get(sessionId);
+  const timer = setTimeout(async () => {
+    const session = await getSession(sessionId);
     if (session) {
       io.to(sessionId).emit('user-count', { count: session.connectedUsers });
     }
@@ -235,9 +281,9 @@ io.on('connection', (socket) => {
   let isAdmin = false;
 
   // セッション参加
-  socket.on('join-session', (data: { sessionId: string; isAdmin: boolean }) => {
+  socket.on('join-session', async (data: { sessionId: string; isAdmin: boolean }) => {
     const { sessionId, isAdmin: admin } = data;
-    const session = sessions.get(sessionId);
+    const session = await getSession(sessionId);
 
     if (!session) {
       socket.emit('error', { message: 'Session not found' });
@@ -250,7 +296,9 @@ io.on('connection', (socket) => {
 
     if (!admin) {
       session.connectedUsers++;
-      sessions.set(sessionId, session);
+      sessionCache.set(sessionId, session);
+      // DynamoDBへの保存は非同期で行う（リアルタイム性のため）
+      saveSessionToDynamo(session);
     }
 
     // 現在の完全な状態を送信
@@ -265,23 +313,21 @@ io.on('connection', (socket) => {
     };
     socket.emit('sync-state', syncState);
 
-    // 接続数をブロードキャスト
     broadcastUserCount(sessionId);
 
     console.log(`✅ User joined session: ${sessionId} (Admin: ${admin}, Users: ${session.connectedUsers})`);
   });
 
   // 管理者からの色変更（手動モード時のみ）
-  socket.on('change-color', (data: { sessionId: string; color: string; effect?: EffectType }) => {
+  socket.on('change-color', async (data: { sessionId: string; color: string; effect?: EffectType }) => {
     const { sessionId, color, effect } = data;
-    const session = sessions.get(sessionId);
+    const session = await getSession(sessionId);
 
     if (!session) {
       socket.emit('error', { message: 'Session not found' });
       return;
     }
 
-    // プログラムモード実行中は手動変更を無視
     if (session.mode === 'program' && session.isProgramRunning) {
       socket.emit('error', { message: 'Program is running. Cannot change color manually.' });
       return;
@@ -289,68 +335,66 @@ io.on('connection', (socket) => {
 
     session.color = color;
     session.effect = effect || 'none';
-    sessions.set(sessionId, session);
+    sessionCache.set(sessionId, session);
+    saveSessionToDynamo(session);
 
-    // セッション内の全ユーザーに色変更を通知
     io.to(sessionId).emit('color-change', { color, effect: session.effect });
 
     console.log(`🎨 Color changed in session ${sessionId}: ${color} (effect: ${session.effect})`);
   });
 
   // エフェクトトリガー（手動モード時のみ）
-  socket.on('trigger-effect', (data: { sessionId: string; effectType: EffectType }) => {
+  socket.on('trigger-effect', async (data: { sessionId: string; effectType: EffectType }) => {
     const { sessionId, effectType } = data;
-    const session = sessions.get(sessionId);
+    const session = await getSession(sessionId);
 
     if (!session) {
       socket.emit('error', { message: 'Session not found' });
       return;
     }
 
-    // プログラムモード実行中は手動変更を無視
     if (session.mode === 'program' && session.isProgramRunning) {
       socket.emit('error', { message: 'Program is running. Cannot trigger effect manually.' });
       return;
     }
 
     session.effect = effectType;
-    sessions.set(sessionId, session);
+    sessionCache.set(sessionId, session);
+    saveSessionToDynamo(session);
 
-    // セッション内の全ユーザーにエフェクトを通知
     io.to(sessionId).emit('trigger-effect', { effectType });
 
     console.log(`⚡ Effect triggered in session ${sessionId}: ${effectType}`);
   });
 
   // モード切替
-  socket.on('change-mode', (data: { sessionId: string; mode: SessionMode }) => {
+  socket.on('change-mode', async (data: { sessionId: string; mode: SessionMode }) => {
     const { sessionId, mode } = data;
-    const session = sessions.get(sessionId);
+    const session = await getSession(sessionId);
 
     if (!session) {
       socket.emit('error', { message: 'Session not found' });
       return;
     }
 
-    // プログラム実行中はモード切替不可
     if (session.isProgramRunning) {
       socket.emit('error', { message: 'Cannot change mode while program is running.' });
       return;
     }
 
     session.mode = mode;
-    sessions.set(sessionId, session);
+    sessionCache.set(sessionId, session);
+    saveSessionToDynamo(session);
 
-    // 全ユーザーに通知
     io.to(sessionId).emit('mode-change', { mode });
 
     console.log(`🔄 Mode changed in session ${sessionId}: ${mode}`);
   });
 
   // プログラム開始
-  socket.on('start-program', (data: { sessionId: string }) => {
+  socket.on('start-program', async (data: { sessionId: string }) => {
     const { sessionId } = data;
-    const session = sessions.get(sessionId);
+    const session = await getSession(sessionId);
 
     if (!session) {
       socket.emit('error', { message: 'Session not found' });
@@ -362,14 +406,14 @@ io.on('connection', (socket) => {
       return;
     }
 
-    const startTime = Date.now() + 1000; // 1秒後に開始（同期のため）
+    const startTime = Date.now() + 1000;
 
     session.mode = 'program';
     session.isProgramRunning = true;
     session.programStartTime = startTime;
-    sessions.set(sessionId, session);
+    sessionCache.set(sessionId, session);
+    saveSessionToDynamo(session);
 
-    // 全ユーザーにプログラム開始を通知
     io.to(sessionId).emit('program-start', {
       program: session.program,
       startTime,
@@ -377,25 +421,25 @@ io.on('connection', (socket) => {
 
     console.log(`▶️ Program started in session ${sessionId} at ${new Date(startTime).toISOString()}`);
 
-    // プログラム終了タイマー
     const duration = session.program.totalDuration;
-    setTimeout(() => {
-      const currentSession = sessions.get(sessionId);
+    setTimeout(async () => {
+      const currentSession = await getSession(sessionId);
       if (currentSession && currentSession.isProgramRunning) {
         currentSession.isProgramRunning = false;
         currentSession.programStartTime = null;
-        sessions.set(sessionId, currentSession);
+        sessionCache.set(sessionId, currentSession);
+        saveSessionToDynamo(currentSession);
 
         io.to(sessionId).emit('program-stop', { reason: 'completed' });
         console.log(`⏹️ Program completed in session ${sessionId}`);
       }
-    }, duration + 1000); // 開始待機分を加算
+    }, duration + 1000);
   });
 
   // プログラム停止
-  socket.on('stop-program', (data: { sessionId: string }) => {
+  socket.on('stop-program', async (data: { sessionId: string }) => {
     const { sessionId } = data;
-    const session = sessions.get(sessionId);
+    const session = await getSession(sessionId);
 
     if (!session) {
       socket.emit('error', { message: 'Session not found' });
@@ -404,62 +448,57 @@ io.on('connection', (socket) => {
 
     session.isProgramRunning = false;
     session.programStartTime = null;
-    sessions.set(sessionId, session);
+    sessionCache.set(sessionId, session);
+    saveSessionToDynamo(session);
 
-    // 全ユーザーに停止を通知
     io.to(sessionId).emit('program-stop', { reason: 'manual' });
 
     console.log(`⏹️ Program manually stopped in session ${sessionId}`);
   });
 
   // ユーザーからの色変更リクエスト（手動モード時のみ）
-  socket.on('user-color-change', (data: { sessionId: string; color: string }) => {
+  socket.on('user-color-change', async (data: { sessionId: string; color: string }) => {
     const { sessionId, color } = data;
-    const session = sessions.get(sessionId);
+    const session = await getSession(sessionId);
 
     if (!session) {
       socket.emit('error', { message: 'Session not found' });
       return;
     }
 
-    // プログラムモード実行中はユーザーの色変更を無視
     if (session.mode === 'program' && session.isProgramRunning) {
       socket.emit('control-locked', { message: 'Program is running' });
       return;
     }
 
-    // 自分だけに色を適用（他のユーザーには影響しない）
     socket.emit('color-change', { color, effect: 'none' });
   });
 
   // 切断処理
-  socket.on('disconnect', () => {
+  socket.on('disconnect', async () => {
     console.log(`🔌 Client disconnected: ${socket.id}`);
 
     if (currentSessionId && !isAdmin) {
-      const session = sessions.get(currentSessionId);
+      const session = sessionCache.get(currentSessionId);
       if (session) {
         session.connectedUsers = Math.max(0, session.connectedUsers - 1);
-        sessions.set(currentSessionId, session);
+        sessionCache.set(currentSessionId, session);
+        saveSessionToDynamo(session);
         broadcastUserCount(currentSessionId);
       }
     }
   });
 });
 
-// 定期的なセッションクリーンアップ（メモリリーク防止）
+// 定期的なキャッシュクリーンアップ（メモリリーク防止）
 setInterval(() => {
-  const now = Date.now();
-  const maxAge = 24 * 60 * 60 * 1000; // 24時間
-
-  sessions.forEach((session, id) => {
-    const age = now - session.createdAt.getTime();
-    if (age > maxAge && session.connectedUsers === 0) {
-      sessions.delete(id);
-      console.log(`🧹 Cleaned up inactive session: ${id}`);
+  sessionCache.forEach((session, id) => {
+    if (session.connectedUsers === 0) {
+      sessionCache.delete(id);
+      console.log(`🧹 Removed from cache: ${id}`);
     }
   });
-}, 60 * 60 * 1000); // 1時間ごと
+}, 60 * 60 * 1000);
 
 const PORT = process.env.PORT || 3001;
 
@@ -467,4 +506,5 @@ httpServer.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
   console.log(`📡 WebSocket server ready (optimized for 500+ users)`);
   console.log(`🌐 CORS enabled for: ${corsOrigins.join(', ')}`);
+  console.log(`💾 DynamoDB table: ${SESSIONS_TABLE}`);
 });

@@ -12,6 +12,8 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.943.0",
+    "@aws-sdk/lib-dynamodb": "^3.943.0",
     "@socket.io/redis-adapter": "^8.3.0",
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",

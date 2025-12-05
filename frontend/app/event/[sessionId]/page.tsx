@@ -45,6 +45,7 @@ export default function EventPage({ params }: { params: Promise<{ sessionId: str
   const [mode, setMode] = useState<SessionMode>('manual');
   const [isProgramRunning, setIsProgramRunning] = useState(false);
   const [isControlLocked, setIsControlLocked] = useState(false);
+  const [mounted, setMounted] = useState(false);
 
   // エフェクト用のref
   const effectIntervalRef = useRef<NodeJS.Timeout | null>(null);
@@ -56,6 +57,10 @@ export default function EventPage({ params }: { params: Promise<{ sessionId: str
   const programStartTimeRef = useRef<number | null>(null);
   const programAnimationRef = useRef<number | null>(null);
   const serverTimeOffsetRef = useRef<number>(0);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   // エフェクトをクリア
   const clearEffects = useCallback(() => {
@@ -69,7 +74,7 @@ export default function EventPage({ params }: { params: Promise<{ sessionId: str
     }
   }, []);
 
-  // フェードエフェクト（明→暗→明をスムーズに）
+  // フェードエフェクト
   const startFadeEffect = useCallback((color: string) => {
     clearEffects();
     let brightness = 1;
@@ -86,7 +91,6 @@ export default function EventPage({ params }: { params: Promise<{ sessionId: str
         direction = -1;
       }
 
-      // 色を暗くする
       const r = parseInt(color.slice(1, 3), 16);
       const g = parseInt(color.slice(3, 5), 16);
       const b = parseInt(color.slice(5, 7), 16);
@@ -113,7 +117,7 @@ export default function EventPage({ params }: { params: Promise<{ sessionId: str
     }, 500);
   }, [clearEffects]);
 
-  // ストロボエフェクト（超高速点滅）
+  // ストロボエフェクト
   const startStrobeEffect = useCallback((color: string) => {
     clearEffects();
     let isOn = true;
@@ -174,7 +178,6 @@ export default function EventPage({ params }: { params: Promise<{ sessionId: str
     const elapsed = now - programStartTimeRef.current;
     const program = programRef.current;
 
-    // 現在のセグメントを探す
     let currentSegment: ProgramSegment | null = null;
     for (const segment of program.segments) {
       if (elapsed >= segment.startTime && elapsed < segment.endTime) {
@@ -187,7 +190,6 @@ export default function EventPage({ params }: { params: Promise<{ sessionId: str
       applyEffect(currentSegment.color, currentSegment.effect);
     }
 
-    // まだプログラム実行中なら次のフレームをスケジュール
     if (elapsed < program.totalDuration) {
       programAnimationRef.current = requestAnimationFrame(runProgramLoop);
     }
@@ -200,14 +202,12 @@ export default function EventPage({ params }: { params: Promise<{ sessionId: str
     setIsProgramRunning(true);
     setIsControlLocked(true);
 
-    // 開始時刻まで待機してから再生開始
     const waitTime = startTime - (Date.now() - serverTimeOffsetRef.current);
     if (waitTime > 0) {
       setTimeout(() => {
         programAnimationRef.current = requestAnimationFrame(runProgramLoop);
       }, waitTime);
     } else {
-      // すでに開始時刻を過ぎている場合はすぐに開始
       programAnimationRef.current = requestAnimationFrame(runProgramLoop);
     }
   }, [runProgramLoop]);
@@ -229,7 +229,6 @@ export default function EventPage({ params }: { params: Promise<{ sessionId: str
   useEffect(() => {
     const sessionId = resolvedParams.sessionId;
 
-    // セッション情報を取得
     const fetchSession = async () => {
       try {
         const response = await fetch(`${API_URL}/api/sessions/${sessionId}`);
@@ -244,7 +243,6 @@ export default function EventPage({ params }: { params: Promise<{ sessionId: str
       }
     };
 
-    // サーバー時刻との差分を計算
     const syncServerTime = async () => {
       try {
         const start = Date.now();
@@ -261,23 +259,19 @@ export default function EventPage({ params }: { params: Promise<{ sessionId: str
     fetchSession();
     syncServerTime();
 
-    // WebSocket接続
     const newSocket = io(API_URL, {
       transports: ['websocket', 'polling'],
     });
 
     newSocket.on('connect', () => {
-      console.log('接続成功');
       setIsConnected(true);
       newSocket.emit('join-session', { sessionId, isAdmin: false });
     });
 
     newSocket.on('disconnect', () => {
-      console.log('接続解除');
       setIsConnected(false);
     });
 
-    // 初期状態同期
     newSocket.on('sync-state', (data: {
       mode: SessionMode;
       color: string;
@@ -287,13 +281,9 @@ export default function EventPage({ params }: { params: Promise<{ sessionId: str
       isProgramRunning: boolean;
       serverTime: number;
     }) => {
-      console.log('状態同期:', data);
       setMode(data.mode);
-
-      // サーバー時刻オフセット更新
       serverTimeOffsetRef.current = Date.now() - data.serverTime;
 
-      // プログラム実行中なら途中から再生
       if (data.isProgramRunning && data.program && data.programStartTime) {
         startProgram(data.program, data.programStartTime);
       } else {
@@ -302,22 +292,17 @@ export default function EventPage({ params }: { params: Promise<{ sessionId: str
       }
     });
 
-    // 色変更
     newSocket.on('color-change', (data: { color: string; effect?: EffectType }) => {
-      console.log('色変更:', data);
       if (!isProgramRunning) {
         applyEffect(data.color, data.effect || 'none');
       }
     });
 
-    // エフェクトトリガー（後方互換性）
     newSocket.on('trigger-effect', (data: { effectType: EffectType }) => {
-      console.log('エフェクト受信:', data.effectType);
       if (!isProgramRunning) {
         setCurrentEffect(data.effectType);
         applyEffect(baseColor, data.effectType);
 
-        // 5秒後にエフェクト停止
         setTimeout(() => {
           setCurrentEffect('none');
           applyEffect(baseColor, 'none');
@@ -325,52 +310,39 @@ export default function EventPage({ params }: { params: Promise<{ sessionId: str
       }
     });
 
-    // モード変更
     newSocket.on('mode-change', (data: { mode: SessionMode }) => {
-      console.log('モード変更:', data.mode);
       setMode(data.mode);
       if (data.mode === 'manual') {
         setIsControlLocked(false);
       }
     });
 
-    // プログラム開始
     newSocket.on('program-start', (data: { program: Program; startTime: number }) => {
-      console.log('プログラム開始:', data);
       startProgram(data.program, data.startTime);
     });
 
-    // プログラム停止
-    newSocket.on('program-stop', (data: { reason: string }) => {
-      console.log('プログラム停止:', data.reason);
+    newSocket.on('program-stop', () => {
       stopProgram();
     });
 
-    // コントロールロック通知
-    newSocket.on('control-locked', (data: { message: string }) => {
-      console.log('コントロールロック:', data.message);
+    newSocket.on('control-locked', () => {
       setIsControlLocked(true);
     });
 
     newSocket.on('error', (data: { message: string }) => {
-      console.error('エラー:', data.message);
       setError(data.message);
     });
 
     setSocket(newSocket);
 
-    // スクリーンをオンのままにする（可能な場合）
     let wakeLock: WakeLockSentinel | null = null;
     if ('wakeLock' in navigator) {
       navigator.wakeLock
         .request('screen')
         .then((lock) => {
           wakeLock = lock;
-          console.log('スクリーンロック有効化');
         })
-        .catch((err) => {
-          console.log('スクリーンロック失敗:', err);
-        });
+        .catch(() => {});
     }
 
     return () => {
@@ -385,7 +357,6 @@ export default function EventPage({ params }: { params: Promise<{ sessionId: str
     };
   }, [resolvedParams.sessionId, applyEffect, startProgram, stopProgram, clearEffects, isProgramRunning, baseColor]);
 
-  // シェア機能
   const handleShare = async () => {
     const shareUrl = typeof window !== 'undefined' ? window.location.href : '';
 
@@ -400,7 +371,6 @@ export default function EventPage({ params }: { params: Promise<{ sessionId: str
         console.log('シェアキャンセル:', err);
       }
     } else {
-      // Web Share API非対応の場合はクリップボードにコピー
       try {
         await navigator.clipboard.writeText(shareUrl);
         setShowShareMessage(true);
@@ -411,191 +381,245 @@ export default function EventPage({ params }: { params: Promise<{ sessionId: str
     }
   };
 
-  // テキスト色の決定
+  // テキスト色の決定（明るい背景には暗いテキスト）
   const getTextColor = (bgColor: string) => {
-    if (bgColor === '#FFFFFF' || bgColor === '#FFFF00' || bgColor === '#00FF00') {
-      return '#000000';
-    }
-    return '#FFFFFF';
+    const r = parseInt(bgColor.slice(1, 3), 16);
+    const g = parseInt(bgColor.slice(3, 5), 16);
+    const b = parseInt(bgColor.slice(5, 7), 16);
+    const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+    return luminance > 0.5 ? '#000000' : '#FFFFFF';
   };
 
   const textColor = getTextColor(displayColor);
+  const isDarkBg = textColor === '#FFFFFF';
 
   if (error) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-red-50 p-4">
-        <div className="max-w-md w-full bg-white rounded-2xl shadow-xl p-8 text-center">
-          <h1 className="text-2xl font-bold text-red-600 mb-4">エラー</h1>
-          <p className="text-gray-700 mb-6">{error}</p>
-          <button
-            onClick={() => router.push('/')}
-            className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-6 rounded-lg transition duration-200"
-          >
-            ホームに戻る
-          </button>
+      <div className="min-h-screen flex items-center justify-center bg-[#050508] p-4 noise-overlay">
+        <div className="fixed inset-0">
+          <div
+            className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] rounded-full"
+            style={{ background: 'radial-gradient(circle, rgba(255,0,100,0.2) 0%, transparent 70%)' }}
+          />
+        </div>
+
+        <div className={`relative max-w-md w-full ${mounted ? 'animate-scale-in' : 'opacity-0'}`}>
+          <div className="glass-strong rounded-3xl p-8 text-center">
+            <div className="w-16 h-16 mx-auto mb-6 rounded-2xl bg-gradient-to-br from-[#ff0066] to-[#ff00aa] p-[2px]">
+              <div className="w-full h-full rounded-2xl bg-[#0a0a0f] flex items-center justify-center">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-[#ff0066]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+              </div>
+            </div>
+
+            <h1 className="text-2xl font-bold text-white mb-3">エラー</h1>
+            <p className="text-white/60 mb-8">{error}</p>
+
+            <button
+              onClick={() => router.push('/')}
+              className="group relative w-full overflow-hidden rounded-2xl p-[1px] transition-all duration-500 hover:scale-[1.02]"
+            >
+              <div className="absolute inset-0 bg-gradient-to-r from-[#00f5ff] via-[#8b5cf6] to-[#ff00aa] opacity-80 group-hover:opacity-100 transition-opacity" />
+              <div className="relative flex items-center justify-center gap-3 bg-[#0a0a0f] rounded-2xl px-8 py-4 transition-all group-hover:bg-[#0a0a0f]/80">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-[#00f5ff]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+                </svg>
+                <span className="font-semibold text-white">ホームに戻る</span>
+              </div>
+            </button>
+          </div>
         </div>
       </div>
     );
   }
 
   return (
-    <div style={{
-      position: 'fixed',
-      top: 0,
-      left: 0,
-      width: '100vw',
-      height: '100vh',
-      backgroundColor: displayColor,
-      transition: currentEffect === 'none' && !isProgramRunning ? 'background-color 0.3s ease' : 'none'
-    }}>
-      {/* 上部: 接続状況 */}
-      <div style={{
-        position: 'fixed',
-        top: '16px',
-        left: 0,
-        right: 0,
-        textAlign: 'center',
-        padding: '0 16px',
-        zIndex: 10
-      }}>
-        <div
-          style={{
-            backgroundColor: 'rgba(0,0,0,0.2)',
-            borderRadius: '9999px',
-            padding: '8px 16px',
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: '8px',
-            color: textColor,
-          }}
-        >
+    <div
+      className="fullscreen-light"
+      style={{
+        backgroundColor: displayColor,
+        transition: currentEffect === 'none' && !isProgramRunning ? 'background-color 0.3s ease' : 'none'
+      }}
+    >
+      {/* 上部: 接続状況バッジ */}
+      <div className="fixed top-0 left-0 right-0 z-50 pt-[env(safe-area-inset-top)] pointer-events-none">
+        <div className="flex justify-center pt-4 px-4">
           <div
+            className={`
+              inline-flex items-center gap-2 px-4 py-2 rounded-full
+              backdrop-blur-xl transition-all duration-500
+              ${mounted ? 'animate-slide-up' : 'opacity-0'}
+            `}
             style={{
-              width: '12px',
-              height: '12px',
-              borderRadius: '50%',
-              backgroundColor: isConnected ? '#4ade80' : '#f87171'
+              background: isDarkBg ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)',
+              border: `1px solid ${isDarkBg ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'}`,
             }}
-          />
-          <span style={{ fontSize: '14px', fontWeight: 500 }}>
-            {isConnected ? (isProgramRunning ? 'プログラム実行中' : '接続中') : '接続待機中...'}
-          </span>
+          >
+            <div className="relative">
+              <div
+                className={`w-2.5 h-2.5 rounded-full ${isConnected ? 'bg-[#00f5ff]' : 'bg-[#ff0066]'}`}
+              />
+              {isConnected && (
+                <div className="absolute inset-0 w-2.5 h-2.5 rounded-full bg-[#00f5ff] animate-ping opacity-75" />
+              )}
+            </div>
+
+            <span
+              className="text-sm font-medium"
+              style={{ color: textColor }}
+            >
+              {isConnected
+                ? (isProgramRunning ? 'PROGRAM RUNNING' : 'CONNECTED')
+                : 'CONNECTING...'
+              }
+            </span>
+
+            {mode === 'program' && (
+              <div
+                className="ml-1 px-2 py-0.5 rounded text-xs font-mono font-semibold"
+                style={{
+                  background: isDarkBg ? 'rgba(139,92,246,0.3)' : 'rgba(139,92,246,0.2)',
+                  color: isDarkBg ? '#c4b5fd' : '#7c3aed',
+                }}
+              >
+                AUTO
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
-      {/* プログラムモード時のロックインジケーター */}
+      {/* 中央: プログラムモード時のインジケーター */}
       {isControlLocked && (
-        <div style={{
-          position: 'fixed',
-          top: '50%',
-          left: '50%',
-          transform: 'translate(-50%, -50%)',
-          textAlign: 'center',
-          zIndex: 5
-        }}>
-          <div style={{
-            fontSize: '48px',
-            marginBottom: '8px'
-          }}>
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              style={{ width: '64px', height: '64px', margin: '0 auto', opacity: 0.5 }}
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke={textColor}
-              strokeWidth={1.5}
+        <div className="fixed inset-0 flex items-center justify-center z-10 pointer-events-none">
+          <div className={`text-center ${mounted ? 'animate-scale-in' : 'opacity-0'}`}>
+            <div className="relative inline-block">
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                className="w-24 h-24 mx-auto"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke={textColor}
+                strokeWidth={1}
+                style={{
+                  opacity: 0.4,
+                  filter: isDarkBg ? 'drop-shadow(0 0 20px rgba(255,255,255,0.3))' : 'drop-shadow(0 0 20px rgba(0,0,0,0.2))',
+                }}
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3"
+                />
+              </svg>
+            </div>
+
+            <p
+              className="mt-4 text-sm font-medium tracking-widest uppercase"
+              style={{
+                color: textColor,
+                opacity: 0.5,
+              }}
             >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3"
-              />
-            </svg>
+              Synchronized
+            </p>
           </div>
         </div>
       )}
 
-      {/* 下部: イベント名とシェアボタン */}
-      <div
-        style={{
-          position: 'fixed',
-          bottom: 0,
-          left: 0,
-          right: 0,
-          padding: '48px 24px',
-          paddingBottom: '32px',
-          zIndex: 50,
-          background: 'linear-gradient(to top, rgba(0,0,0,0.1), transparent)'
-        }}
-      >
-        <div style={{ textAlign: 'center', marginBottom: '12px' }}>
-          <p
-            style={{
-              fontSize: '14px',
-              fontWeight: 500,
-              color: textColor,
-            }}
-          >
-            {eventName || 'イベント'}
-          </p>
-        </div>
-
-        {/* シェアボタン */}
-        <button
-          onClick={handleShare}
+      {/* 下部: イベント情報とシェアボタン */}
+      <div className="fixed bottom-0 left-0 right-0 z-50 pb-[env(safe-area-inset-bottom)]">
+        <div
+          className="px-6 pt-16 pb-8"
           style={{
-            width: '100%',
-            backgroundColor: 'rgba(255,255,255,0.95)',
-            color: '#111827',
-            fontWeight: 'bold',
-            padding: '16px 24px',
-            borderRadius: '9999px',
-            boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)',
-            border: 'none',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: '8px',
-            fontSize: '16px',
-            cursor: 'pointer'
+            background: isDarkBg
+              ? 'linear-gradient(to top, rgba(0,0,0,0.4) 0%, transparent 100%)'
+              : 'linear-gradient(to top, rgba(255,255,255,0.3) 0%, transparent 100%)',
           }}
         >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            style={{ width: '20px', height: '20px' }}
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            strokeWidth={2.5}
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"
-            />
-          </svg>
-          <span>Share</span>
-        </button>
-
-        {/* コピー完了メッセージ */}
-        {showShareMessage && (
-          <div style={{ marginTop: '12px', textAlign: 'center' }}>
-            <span
-              style={{
-                fontSize: '14px',
-                fontWeight: 500,
-                backgroundColor: 'rgba(255,255,255,0.3)',
-                padding: '8px 16px',
-                borderRadius: '9999px',
-                display: 'inline-block',
-                backdropFilter: 'blur(4px)',
-                color: textColor,
-              }}
+          <div className={`text-center mb-4 ${mounted ? 'animate-slide-up delay-100' : 'opacity-0'}`}>
+            <p
+              className="text-sm font-medium tracking-wide"
+              style={{ color: textColor, opacity: 0.8 }}
             >
-              URLをコピーしました
-            </span>
+              {eventName || 'Event'}
+            </p>
           </div>
-        )}
+
+          <button
+            onClick={handleShare}
+            className={`
+              group relative w-full overflow-hidden rounded-2xl transition-all duration-300
+              active:scale-[0.98] pointer-events-auto
+              ${mounted ? 'animate-slide-up delay-200' : 'opacity-0'}
+            `}
+            style={{
+              background: isDarkBg
+                ? 'rgba(255,255,255,0.15)'
+                : 'rgba(0,0,0,0.1)',
+              backdropFilter: 'blur(20px)',
+              WebkitBackdropFilter: 'blur(20px)',
+              border: `1px solid ${isDarkBg ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.1)'}`,
+            }}
+          >
+            <div className="flex items-center justify-center gap-3 px-8 py-4">
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                className="w-5 h-5 transition-transform group-hover:scale-110"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke={textColor}
+                strokeWidth={2}
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"
+                />
+              </svg>
+              <span
+                className="font-semibold text-base tracking-wide"
+                style={{ color: textColor }}
+              >
+                Share
+              </span>
+            </div>
+          </button>
+
+          {showShareMessage && (
+            <div className="mt-4 text-center animate-scale-in">
+              <span
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium"
+                style={{
+                  background: isDarkBg ? 'rgba(0,245,255,0.2)' : 'rgba(0,200,200,0.2)',
+                  color: isDarkBg ? '#00f5ff' : '#006666',
+                  backdropFilter: 'blur(10px)',
+                }}
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+                URLをコピーしました
+              </span>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* CYLINKブランディング */}
+      <div
+        className={`fixed bottom-[env(safe-area-inset-bottom)] right-4 pb-2 z-40 pointer-events-none ${mounted ? 'animate-slide-up delay-300' : 'opacity-0'}`}
+      >
+        <span
+          className="font-mono text-xs tracking-widest"
+          style={{
+            color: textColor,
+            opacity: 0.2,
+          }}
+        >
+          CYLINK
+        </span>
       </div>
     </div>
   );

@@ -31,25 +31,24 @@ interface Program {
 
 // プリセットカラー
 const PRESET_COLORS = [
-  { name: '赤', color: '#FF0000' },
-  { name: 'オレンジ', color: '#FF8800' },
-  { name: '黄', color: '#FFFF00' },
-  { name: '緑', color: '#00FF00' },
-  { name: '青', color: '#0088FF' },
-  { name: '紫', color: '#8800FF' },
-  { name: 'ピンク', color: '#FF00FF' },
-  { name: '白', color: '#FFFFFF' },
-  { name: '黒', color: '#000000' },
+  { name: 'Red', color: '#FF0000' },
+  { name: 'Orange', color: '#FF8800' },
+  { name: 'Yellow', color: '#FFFF00' },
+  { name: 'Lime', color: '#00FF00' },
+  { name: 'Cyan', color: '#00F5FF' },
+  { name: 'Blue', color: '#0088FF' },
+  { name: 'Purple', color: '#8800FF' },
+  { name: 'Pink', color: '#FF00AA' },
+  { name: 'White', color: '#FFFFFF' },
 ];
 
 // エフェクト一覧
-const EFFECTS: { name: string; type: EffectType; description: string }[] = [
-  { name: '通常', type: 'none', description: '単色表示' },
-  { name: 'ゆっくり点滅', type: 'slow-flash', description: '1秒間隔' },
-  { name: '速く点滅', type: 'fast-flash', description: '0.2秒間隔' },
-  { name: 'ストロボ', type: 'strobe', description: '超高速' },
-  { name: 'フェード', type: 'fade', description: '明滅' },
-  { name: 'レインボー', type: 'rainbow', description: '虹色' },
+const EFFECTS: { name: string; type: EffectType; icon: string }[] = [
+  { name: 'Slow Flash', type: 'slow-flash', icon: '💫' },
+  { name: 'Fast Flash', type: 'fast-flash', icon: '⚡' },
+  { name: 'Strobe', type: 'strobe', icon: '🔥' },
+  { name: 'Fade', type: 'fade', icon: '🌊' },
+  { name: 'Rainbow', type: 'rainbow', icon: '🌈' },
 ];
 
 // 時間をフォーマット（mm:ss.ms）
@@ -82,6 +81,8 @@ export default function AdminPage() {
   const [isCreated, setIsCreated] = useState(false);
   const [mode, setMode] = useState<SessionMode>('manual');
   const [isProgramRunning, setIsProgramRunning] = useState(false);
+  const [mounted, setMounted] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
 
   // プログラム編集
   const [showProgramEditor, setShowProgramEditor] = useState(false);
@@ -99,16 +100,18 @@ export default function AdminPage() {
   const [isPreviewPlaying, setIsPreviewPlaying] = useState(false);
   const previewIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   const eventUrl = sessionId
     ? `${typeof window !== 'undefined' ? window.location.origin : ''}/event/${sessionId}`
     : '';
 
   // イベント作成
   const createEvent = async () => {
-    if (!eventName.trim()) {
-      alert('イベント名を入力してください');
-      return;
-    }
+    if (!eventName.trim()) return;
+    setIsLoading(true);
 
     try {
       const response = await fetch(`${API_URL}/api/sessions`, {
@@ -134,7 +137,6 @@ export default function AdminPage() {
       });
 
       newSocket.on('connect', () => {
-        console.log('管理者接続成功');
         newSocket.emit('join-session', { sessionId: data.sessionId, isAdmin: true });
       });
 
@@ -169,14 +171,14 @@ export default function AdminPage() {
       setSocket(newSocket);
     } catch (error) {
       console.error('イベント作成エラー:', error);
-      alert('イベント作成に失敗しました');
+    } finally {
+      setIsLoading(false);
     }
   };
 
   // 色変更
   const changeColor = (color: string, effect: EffectType = 'none') => {
     if (!socket || !sessionId || isProgramRunning) return;
-
     setCurrentColor(color);
     setCurrentEffect(effect);
     socket.emit('change-color', { sessionId, color, effect });
@@ -185,7 +187,6 @@ export default function AdminPage() {
   // エフェクトトリガー
   const triggerEffect = (effectType: EffectType) => {
     if (!socket || !sessionId || isProgramRunning) return;
-
     setCurrentEffect(effectType);
     socket.emit('trigger-effect', { sessionId, effectType });
   };
@@ -193,47 +194,33 @@ export default function AdminPage() {
   // モード切替
   const changeMode = (newMode: SessionMode) => {
     if (!socket || !sessionId || isProgramRunning) return;
-
     socket.emit('change-mode', { sessionId, mode: newMode });
     setMode(newMode);
   };
 
   // プログラム開始
   const startProgram = () => {
-    if (!socket || !sessionId || program.segments.length === 0) {
-      alert('プログラムにセグメントがありません');
-      return;
-    }
-
+    if (!socket || !sessionId || program.segments.length === 0) return;
     socket.emit('start-program', { sessionId });
   };
 
   // プログラム停止
   const stopProgram = () => {
     if (!socket || !sessionId) return;
-
     socket.emit('stop-program', { sessionId });
   };
 
   // プログラム保存
   const saveProgram = async () => {
     if (!sessionId) return;
-
     try {
-      const response = await fetch(`${API_URL}/api/sessions/${sessionId}/program`, {
+      await fetch(`${API_URL}/api/sessions/${sessionId}/program`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ program }),
       });
-
-      if (response.ok) {
-        alert('プログラムを保存しました');
-      } else {
-        throw new Error('保存失敗');
-      }
     } catch (error) {
       console.error('プログラム保存エラー:', error);
-      alert('プログラムの保存に失敗しました');
     }
   };
 
@@ -241,7 +228,7 @@ export default function AdminPage() {
   const addSegment = () => {
     const lastSegment = program.segments[program.segments.length - 1];
     const startTime = lastSegment ? lastSegment.endTime : 0;
-    const endTime = startTime + 5000; // デフォルト5秒
+    const endTime = startTime + 5000;
 
     const newSegment: ProgramSegment = {
       id: uuidv4(),
@@ -254,12 +241,7 @@ export default function AdminPage() {
     const newSegments = [...program.segments, newSegment];
     const totalDuration = Math.max(...newSegments.map(s => s.endTime));
 
-    setProgram({
-      ...program,
-      segments: newSegments,
-      totalDuration,
-    });
-
+    setProgram({ ...program, segments: newSegments, totalDuration });
     setSelectedSegmentId(newSegment.id);
     setEditingSegment(newSegment);
   };
@@ -270,12 +252,7 @@ export default function AdminPage() {
       s.id === updatedSegment.id ? updatedSegment : s
     );
     const totalDuration = Math.max(...newSegments.map(s => s.endTime));
-
-    setProgram({
-      ...program,
-      segments: newSegments,
-      totalDuration,
-    });
+    setProgram({ ...program, segments: newSegments, totalDuration });
     setEditingSegment(updatedSegment);
   };
 
@@ -283,13 +260,7 @@ export default function AdminPage() {
   const deleteSegment = (segmentId: string) => {
     const newSegments = program.segments.filter(s => s.id !== segmentId);
     const totalDuration = newSegments.length > 0 ? Math.max(...newSegments.map(s => s.endTime)) : 0;
-
-    setProgram({
-      ...program,
-      segments: newSegments,
-      totalDuration,
-    });
-
+    setProgram({ ...program, segments: newSegments, totalDuration });
     if (selectedSegmentId === segmentId) {
       setSelectedSegmentId(null);
       setEditingSegment(null);
@@ -299,9 +270,7 @@ export default function AdminPage() {
   // プレビュー再生/停止
   const togglePreview = () => {
     if (isPreviewPlaying) {
-      if (previewIntervalRef.current) {
-        clearInterval(previewIntervalRef.current);
-      }
+      if (previewIntervalRef.current) clearInterval(previewIntervalRef.current);
       setIsPreviewPlaying(false);
     } else {
       setIsPreviewPlaying(true);
@@ -309,9 +278,7 @@ export default function AdminPage() {
         setPreviewTime(prev => {
           const next = prev + 100;
           if (next >= program.totalDuration) {
-            if (previewIntervalRef.current) {
-              clearInterval(previewIntervalRef.current);
-            }
+            if (previewIntervalRef.current) clearInterval(previewIntervalRef.current);
             setIsPreviewPlaying(false);
             return 0;
           }
@@ -334,102 +301,117 @@ export default function AdminPage() {
   // クリーンアップ
   useEffect(() => {
     return () => {
-      if (socket) {
-        socket.disconnect();
-      }
-      if (previewIntervalRef.current) {
-        clearInterval(previewIntervalRef.current);
-      }
+      if (socket) socket.disconnect();
+      if (previewIntervalRef.current) clearInterval(previewIntervalRef.current);
     };
   }, [socket]);
 
+  // イベント作成画面
   if (!isCreated) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center p-4">
-        {/* 背景装飾 */}
-        <div className="absolute inset-0 overflow-hidden pointer-events-none">
-          <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-purple-500/20 rounded-full blur-3xl" />
-          <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-pink-500/20 rounded-full blur-3xl" />
+      <div className="min-h-screen relative overflow-hidden noise-overlay">
+        {/* 背景 */}
+        <div className="fixed inset-0 bg-[#050508]">
+          <div
+            className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] rounded-full animate-pulse-glow"
+            style={{ background: 'radial-gradient(circle, rgba(0,245,255,0.12) 0%, transparent 70%)' }}
+          />
+          <div
+            className="absolute top-1/4 right-1/3 w-[400px] h-[400px] rounded-full animate-pulse-glow"
+            style={{ background: 'radial-gradient(circle, rgba(255,0,170,0.1) 0%, transparent 70%)', animationDelay: '2s' }}
+          />
         </div>
 
-        <div className="relative max-w-lg w-full">
-          {/* ロゴ/ブランド */}
-          <div className="text-center mb-8">
-            <div className="inline-flex items-center justify-center w-20 h-20 bg-gradient-to-br from-purple-500 to-pink-500 rounded-2xl mb-4 shadow-2xl shadow-purple-500/30">
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-              </svg>
-            </div>
-            <h1 className="text-4xl font-bold text-white mb-2">Cylink</h1>
-            <p className="text-purple-200">リアルタイムライトコントロール</p>
-          </div>
-
-          {/* カード */}
-          <div className="bg-white/10 backdrop-blur-xl rounded-3xl shadow-2xl p-8 border border-white/20">
+        <div className="relative z-10 min-h-screen flex flex-col items-center justify-center px-6">
+          <div className={`max-w-md w-full ${mounted ? 'animate-scale-in' : 'opacity-0'}`}>
+            {/* 戻るボタン */}
             <button
               onClick={() => router.push('/')}
-              className="mb-6 text-purple-300 hover:text-white transition flex items-center gap-2"
+              className={`mb-8 flex items-center gap-2 text-white/40 hover:text-[#00f5ff] transition-colors ${mounted ? 'animate-slide-up' : 'opacity-0'}`}
             >
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
               </svg>
-              戻る
+              <span className="text-sm font-medium">ホームに戻る</span>
             </button>
 
-            <h2 className="text-2xl font-bold text-white mb-6">
-              新しいイベントを作成
-            </h2>
-
-            <div className="space-y-6">
-              <div>
-                <label className="block text-sm font-medium text-purple-200 mb-2">
-                  イベント名
-                </label>
-                <input
-                  type="text"
-                  value={eventName}
-                  onChange={(e) => setEventName(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && createEvent()}
-                  placeholder="例: 春のコンサート 2025"
-                  className="w-full px-5 py-4 bg-white/10 border border-white/20 rounded-xl text-white placeholder-white/40 focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none transition"
-                />
-              </div>
-
-              <button
-                onClick={createEvent}
-                className="w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white font-bold py-4 px-6 rounded-xl transition duration-200 shadow-lg shadow-purple-500/30 flex items-center justify-center gap-2"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            {/* ヘッダー */}
+            <div className={`text-center mb-10 ${mounted ? 'animate-slide-up delay-100' : 'opacity-0'}`}>
+              <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-[#00f5ff]/20 to-[#ff00aa]/20 border border-[#00f5ff]/30 mb-4">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-[#00f5ff]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
                 </svg>
-                イベントを作成
-              </button>
+              </div>
+              <h1 className="text-3xl font-bold text-white mb-2">イベントを作成</h1>
+              <p className="text-white/40">参加者がスマホで接続できるイベントを作成</p>
             </div>
 
-            {/* 機能説明 */}
-            <div className="mt-8 pt-6 border-t border-white/10">
-              <p className="text-purple-200 text-sm text-center mb-4">主な機能</p>
-              <div className="grid grid-cols-3 gap-4 text-center">
-                <div className="p-3">
-                  <div className="text-2xl mb-1">🎨</div>
-                  <p className="text-xs text-purple-200">カラー制御</p>
+            {/* 入力カード */}
+            <div className={`glass-strong rounded-3xl p-8 ${mounted ? 'animate-slide-up delay-200' : 'opacity-0'}`}>
+              <div className="space-y-6">
+                <div>
+                  <label className="block text-sm font-medium text-white/60 mb-3">
+                    イベント名
+                  </label>
+                  <input
+                    type="text"
+                    value={eventName}
+                    onChange={(e) => setEventName(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && createEvent()}
+                    placeholder="例: Summer Festival 2025"
+                    className="w-full px-5 py-4 bg-white/5 border border-white/10 rounded-xl text-white placeholder-white/30 text-lg focus:border-[#00f5ff]/50 focus:ring-2 focus:ring-[#00f5ff]/20 outline-none transition-all"
+                  />
                 </div>
-                <div className="p-3">
-                  <div className="text-2xl mb-1">✨</div>
-                  <p className="text-xs text-purple-200">エフェクト</p>
+
+                <button
+                  onClick={createEvent}
+                  disabled={!eventName.trim() || isLoading}
+                  className="group relative w-full overflow-hidden rounded-xl p-[1px] transition-all duration-500 hover:scale-[1.02] disabled:opacity-40 disabled:hover:scale-100"
+                >
+                  <div className="absolute inset-0 bg-gradient-to-r from-[#00f5ff] to-[#ff00aa] opacity-80 group-hover:opacity-100 transition-opacity" />
+                  <div className="relative flex items-center justify-center gap-3 bg-[#0a0a0f] rounded-xl px-8 py-4 transition-all group-hover:bg-[#0a0a0f]/80">
+                    {isLoading ? (
+                      <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    ) : (
+                      <>
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                        </svg>
+                        <span className="font-semibold text-lg text-white">イベントを作成</span>
+                      </>
+                    )}
+                  </div>
+                </button>
+              </div>
+            </div>
+
+            {/* 機能紹介 */}
+            <div className={`mt-10 grid grid-cols-3 gap-4 ${mounted ? 'animate-slide-up delay-300' : 'opacity-0'}`}>
+              <div className="text-center">
+                <div className="w-12 h-12 mx-auto mb-2 rounded-xl bg-[#ff0000]/10 flex items-center justify-center">
+                  <div className="w-4 h-4 rounded-full bg-[#ff0000]" />
                 </div>
-                <div className="p-3">
-                  <div className="text-2xl mb-1">🎬</div>
-                  <p className="text-xs text-purple-200">プログラム</p>
+                <p className="text-xs text-white/40">カラー制御</p>
+              </div>
+              <div className="text-center">
+                <div className="w-12 h-12 mx-auto mb-2 rounded-xl bg-[#00f5ff]/10 flex items-center justify-center">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-[#00f5ff]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                  </svg>
                 </div>
+                <p className="text-xs text-white/40">エフェクト</p>
+              </div>
+              <div className="text-center">
+                <div className="w-12 h-12 mx-auto mb-2 rounded-xl bg-[#8b5cf6]/10 flex items-center justify-center">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-[#8b5cf6]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                </div>
+                <p className="text-xs text-white/40">プログラム</p>
               </div>
             </div>
           </div>
-
-          {/* フッター */}
-          <p className="text-center text-purple-300/50 text-sm mt-6">
-            500人同時接続対応
-          </p>
         </div>
       </div>
     );
@@ -438,84 +420,89 @@ export default function AdminPage() {
   // プログラムエディタ
   if (showProgramEditor) {
     return (
-      <div className="min-h-screen bg-gray-900 text-white p-4">
+      <div className="min-h-screen bg-[#050508] text-white p-4 noise-overlay">
         <div className="max-w-6xl mx-auto">
           {/* ヘッダー */}
           <div className="flex justify-between items-center mb-6">
             <button
               onClick={() => setShowProgramEditor(false)}
-              className="text-gray-400 hover:text-white"
+              className="flex items-center gap-2 text-white/40 hover:text-[#00f5ff] transition-colors"
             >
-              ← 管理画面に戻る
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+              管理画面に戻る
             </button>
-            <h1 className="text-2xl font-bold">プログラム編集</h1>
+            <h1 className="text-xl font-bold text-gradient-neon">Program Editor</h1>
             <button
               onClick={saveProgram}
-              className="bg-green-600 hover:bg-green-700 px-4 py-2 rounded-lg"
+              className="px-4 py-2 rounded-lg bg-gradient-to-r from-[#00f5ff] to-[#8b5cf6] text-[#050508] font-semibold hover:opacity-90 transition"
             >
               保存
             </button>
           </div>
 
           {/* プレビュー */}
-          <div className="bg-gray-800 rounded-lg p-4 mb-6">
-            <div className="flex items-center gap-4 mb-4">
+          <div className="glass rounded-2xl p-6 mb-6">
+            <div className="flex items-center gap-6 mb-4">
               <button
                 onClick={togglePreview}
-                className="bg-indigo-600 hover:bg-indigo-700 px-4 py-2 rounded-lg flex items-center gap-2"
+                className="flex items-center gap-2 px-5 py-3 rounded-xl bg-gradient-to-r from-[#8b5cf6] to-[#ff00aa] font-semibold transition hover:opacity-90"
               >
                 {isPreviewPlaying ? (
                   <>
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="currentColor" viewBox="0 0 24 24">
+                      <rect x="6" y="5" width="4" height="14" rx="1" />
+                      <rect x="14" y="5" width="4" height="14" rx="1" />
                     </svg>
-                    停止
+                    Pause
                   </>
                 ) : (
                   <>
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="currentColor" viewBox="0 0 24 24">
+                      <path d="M8 5v14l11-7z" />
                     </svg>
-                    プレビュー
+                    Preview
                   </>
                 )}
               </button>
-              <div className="text-lg font-mono">
-                {formatTime(previewTime)} / {formatTime(program.totalDuration)}
+              <div className="font-mono text-lg text-white/60">
+                <span className="text-white">{formatTime(previewTime)}</span>
+                <span className="mx-2">/</span>
+                {formatTime(program.totalDuration)}
               </div>
               <div
-                className="w-16 h-16 rounded-lg border-2 border-gray-600"
-                style={{ backgroundColor: getPreviewColor() }}
+                className="w-14 h-14 rounded-xl border border-white/20 shadow-lg"
+                style={{ backgroundColor: getPreviewColor(), boxShadow: `0 0 30px ${getPreviewColor()}40` }}
               />
             </div>
 
             {/* プログレスバー */}
-            <div className="relative h-2 bg-gray-700 rounded-full">
+            <div className="relative h-2 bg-white/10 rounded-full overflow-hidden">
               <div
-                className="absolute h-full bg-indigo-500 rounded-full"
+                className="absolute h-full bg-gradient-to-r from-[#00f5ff] to-[#ff00aa] rounded-full transition-all"
                 style={{ width: `${(previewTime / Math.max(program.totalDuration, 1)) * 100}%` }}
               />
             </div>
           </div>
 
           {/* タイムライン */}
-          <div className="bg-gray-800 rounded-lg p-4 mb-6">
+          <div className="glass rounded-2xl p-6 mb-6">
             <div className="flex justify-between items-center mb-4">
-              <h2 className="text-lg font-semibold">タイムライン</h2>
+              <h2 className="text-lg font-semibold text-white/80">Timeline</h2>
               <button
                 onClick={addSegment}
-                className="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-lg flex items-center gap-2"
+                className="flex items-center gap-2 px-4 py-2 rounded-lg border border-[#00f5ff]/30 text-[#00f5ff] hover:bg-[#00f5ff]/10 transition"
               >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                 </svg>
-                セグメント追加
+                Add Segment
               </button>
             </div>
 
             {/* タイムラインビジュアル */}
-            <div className="relative h-20 bg-gray-700 rounded-lg overflow-hidden mb-4">
+            <div className="relative h-20 bg-white/5 rounded-xl overflow-hidden mb-4 border border-white/10">
               {program.segments.map((segment) => {
                 const left = (segment.startTime / Math.max(program.totalDuration, 1)) * 100;
                 const width = ((segment.endTime - segment.startTime) / Math.max(program.totalDuration, 1)) * 100;
@@ -527,8 +514,8 @@ export default function AdminPage() {
                       setSelectedSegmentId(segment.id);
                       setEditingSegment(segment);
                     }}
-                    className={`absolute h-full cursor-pointer border-2 ${
-                      selectedSegmentId === segment.id ? 'border-white' : 'border-transparent'
+                    className={`absolute h-full cursor-pointer transition-all ${
+                      selectedSegmentId === segment.id ? 'ring-2 ring-white' : 'hover:brightness-110'
                     }`}
                     style={{
                       left: `${left}%`,
@@ -536,17 +523,16 @@ export default function AdminPage() {
                       backgroundColor: segment.color,
                     }}
                   >
-                    <div className="absolute bottom-1 left-1 text-xs text-white bg-black/50 px-1 rounded">
+                    <div className="absolute bottom-1 left-1 text-xs text-white/80 bg-black/50 px-1.5 py-0.5 rounded font-mono">
                       {formatTime(segment.startTime)}
                     </div>
                   </div>
                 );
               })}
 
-              {/* 再生位置インジケーター */}
               {isPreviewPlaying && (
                 <div
-                  className="absolute w-0.5 h-full bg-red-500"
+                  className="absolute w-0.5 h-full bg-white shadow-lg"
                   style={{ left: `${(previewTime / Math.max(program.totalDuration, 1)) * 100}%` }}
                 />
               )}
@@ -555,8 +541,8 @@ export default function AdminPage() {
             {/* セグメントリスト */}
             <div className="space-y-2 max-h-48 overflow-y-auto">
               {program.segments.length === 0 ? (
-                <p className="text-gray-400 text-center py-4">
-                  セグメントがありません。「セグメント追加」をクリックして追加してください。
+                <p className="text-white/30 text-center py-8">
+                  No segments. Click "Add Segment" to create one.
                 </p>
               ) : (
                 program.segments.map((segment, index) => (
@@ -566,31 +552,26 @@ export default function AdminPage() {
                       setSelectedSegmentId(segment.id);
                       setEditingSegment(segment);
                     }}
-                    className={`flex items-center gap-4 p-3 rounded-lg cursor-pointer ${
-                      selectedSegmentId === segment.id ? 'bg-indigo-600' : 'bg-gray-700 hover:bg-gray-600'
+                    className={`flex items-center gap-4 p-3 rounded-xl cursor-pointer transition ${
+                      selectedSegmentId === segment.id ? 'bg-[#8b5cf6]/20 border border-[#8b5cf6]/30' : 'bg-white/5 hover:bg-white/10 border border-transparent'
                     }`}
                   >
-                    <div className="text-gray-400 w-8">#{index + 1}</div>
+                    <span className="text-white/30 w-8 font-mono text-sm">#{index + 1}</span>
                     <div
-                      className="w-8 h-8 rounded border border-gray-500"
+                      className="w-8 h-8 rounded-lg border border-white/20"
                       style={{ backgroundColor: segment.color }}
                     />
-                    <div className="flex-1">
-                      <div className="font-mono">
-                        {formatTime(segment.startTime)} → {formatTime(segment.endTime)}
-                      </div>
-                      <div className="text-sm text-gray-400">
-                        {EFFECTS.find(e => e.type === segment.effect)?.name || '通常'}
-                      </div>
+                    <div className="flex-1 font-mono text-sm">
+                      {formatTime(segment.startTime)} → {formatTime(segment.endTime)}
                     </div>
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
                         deleteSegment(segment.id);
                       }}
-                      className="text-red-400 hover:text-red-300 p-2"
+                      className="text-white/30 hover:text-[#ff00aa] transition p-2"
                     >
-                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                       </svg>
                     </button>
@@ -602,79 +583,68 @@ export default function AdminPage() {
 
           {/* セグメント編集パネル */}
           {editingSegment && (
-            <div className="bg-gray-800 rounded-lg p-4">
-              <h2 className="text-lg font-semibold mb-4">セグメント編集</h2>
-
+            <div className="glass rounded-2xl p-6">
+              <h2 className="text-lg font-semibold text-white/80 mb-4">Edit Segment</h2>
               <div className="grid grid-cols-2 gap-4">
-                {/* 開始時間 */}
                 <div>
-                  <label className="block text-sm text-gray-400 mb-1">開始時間</label>
+                  <label className="block text-sm text-white/40 mb-2">Start Time</label>
                   <input
                     type="text"
                     value={formatTime(editingSegment.startTime)}
-                    onChange={(e) => {
-                      const ms = parseTime(e.target.value);
-                      updateSegment({ ...editingSegment, startTime: ms });
-                    }}
-                    className="w-full bg-gray-700 px-3 py-2 rounded-lg font-mono"
-                    placeholder="0:00.0"
+                    onChange={(e) => updateSegment({ ...editingSegment, startTime: parseTime(e.target.value) })}
+                    className="w-full bg-white/5 border border-white/10 px-4 py-3 rounded-xl font-mono focus:border-[#00f5ff]/50 outline-none"
                   />
                 </div>
-
-                {/* 終了時間 */}
                 <div>
-                  <label className="block text-sm text-gray-400 mb-1">終了時間</label>
+                  <label className="block text-sm text-white/40 mb-2">End Time</label>
                   <input
                     type="text"
                     value={formatTime(editingSegment.endTime)}
-                    onChange={(e) => {
-                      const ms = parseTime(e.target.value);
-                      updateSegment({ ...editingSegment, endTime: ms });
-                    }}
-                    className="w-full bg-gray-700 px-3 py-2 rounded-lg font-mono"
-                    placeholder="0:05.0"
+                    onChange={(e) => updateSegment({ ...editingSegment, endTime: parseTime(e.target.value) })}
+                    className="w-full bg-white/5 border border-white/10 px-4 py-3 rounded-xl font-mono focus:border-[#00f5ff]/50 outline-none"
                   />
                 </div>
-
-                {/* 色選択 */}
                 <div className="col-span-2">
-                  <label className="block text-sm text-gray-400 mb-1">色</label>
+                  <label className="block text-sm text-white/40 mb-2">Color</label>
                   <div className="flex flex-wrap gap-2">
                     {PRESET_COLORS.map((preset) => (
                       <button
                         key={preset.color}
                         onClick={() => updateSegment({ ...editingSegment, color: preset.color })}
-                        className={`w-10 h-10 rounded-lg border-2 ${
-                          editingSegment.color === preset.color ? 'border-white' : 'border-transparent'
+                        className={`w-10 h-10 rounded-lg transition ${
+                          editingSegment.color === preset.color ? 'ring-2 ring-white scale-110' : 'hover:scale-105'
                         }`}
                         style={{ backgroundColor: preset.color }}
-                        title={preset.name}
                       />
                     ))}
                     <input
                       type="color"
                       value={editingSegment.color}
                       onChange={(e) => updateSegment({ ...editingSegment, color: e.target.value })}
-                      className="w-10 h-10 rounded-lg cursor-pointer"
+                      className="w-10 h-10 rounded-lg cursor-pointer border-2 border-white/20"
                     />
                   </div>
                 </div>
-
-                {/* エフェクト選択 */}
                 <div className="col-span-2">
-                  <label className="block text-sm text-gray-400 mb-1">エフェクト</label>
+                  <label className="block text-sm text-white/40 mb-2">Effect</label>
                   <div className="grid grid-cols-3 gap-2">
+                    <button
+                      onClick={() => updateSegment({ ...editingSegment, effect: 'none' })}
+                      className={`px-4 py-3 rounded-xl text-sm transition ${
+                        editingSegment.effect === 'none' ? 'bg-[#00f5ff] text-[#050508]' : 'bg-white/5 hover:bg-white/10'
+                      }`}
+                    >
+                      None
+                    </button>
                     {EFFECTS.map((effect) => (
                       <button
                         key={effect.type}
                         onClick={() => updateSegment({ ...editingSegment, effect: effect.type })}
-                        className={`px-3 py-2 rounded-lg text-sm ${
-                          editingSegment.effect === effect.type
-                            ? 'bg-indigo-600'
-                            : 'bg-gray-700 hover:bg-gray-600'
+                        className={`px-4 py-3 rounded-xl text-sm transition ${
+                          editingSegment.effect === effect.type ? 'bg-[#00f5ff] text-[#050508]' : 'bg-white/5 hover:bg-white/10'
                         }`}
                       >
-                        {effect.name}
+                        {effect.icon} {effect.name}
                       </button>
                     ))}
                   </div>
@@ -689,114 +659,105 @@ export default function AdminPage() {
 
   // メイン管理画面
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 p-4">
-      {/* 背景装飾 */}
-      <div className="fixed inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-0 left-1/4 w-96 h-96 bg-purple-500/10 rounded-full blur-3xl" />
-        <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-pink-500/10 rounded-full blur-3xl" />
+    <div className="min-h-screen bg-[#050508] p-4 noise-overlay">
+      {/* 背景 */}
+      <div className="fixed inset-0 pointer-events-none">
+        <div
+          className="absolute top-0 left-1/4 w-[500px] h-[500px] rounded-full animate-pulse-glow"
+          style={{ background: 'radial-gradient(circle, rgba(0,245,255,0.08) 0%, transparent 70%)' }}
+        />
+        <div
+          className="absolute bottom-0 right-1/4 w-[400px] h-[400px] rounded-full animate-pulse-glow"
+          style={{ background: 'radial-gradient(circle, rgba(255,0,170,0.06) 0%, transparent 70%)', animationDelay: '2s' }}
+        />
       </div>
 
-      <div className="relative max-w-6xl mx-auto">
+      <div className="relative z-10 max-w-6xl mx-auto">
         {/* ヘッダー */}
-        <div className="bg-white/10 backdrop-blur-xl rounded-2xl shadow-2xl p-6 mb-6 border border-white/20">
+        <div className="glass rounded-2xl p-6 mb-6">
           <div className="flex justify-between items-center">
             <div className="flex items-center gap-4">
-              <div className="w-12 h-12 bg-gradient-to-br from-purple-500 to-pink-500 rounded-xl flex items-center justify-center shadow-lg">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[#00f5ff] to-[#8b5cf6] flex items-center justify-center">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-[#050508]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
                 </svg>
               </div>
               <div>
                 <h1 className="text-2xl font-bold text-white">{eventName}</h1>
-                <p className="text-purple-300 text-sm">イベント管理画面</p>
+                <p className="text-white/40 text-sm">Control Panel</p>
               </div>
             </div>
-            <div className="text-right bg-white/10 rounded-xl px-6 py-3">
-              <p className="text-purple-300 text-xs uppercase tracking-wider">接続中</p>
-              <p className="text-4xl font-bold text-white">{connectedUsers}<span className="text-lg text-purple-300 ml-1">人</span></p>
+            <div className="glass-strong rounded-xl px-6 py-3">
+              <p className="text-[#00f5ff] text-xs uppercase tracking-wider mb-1">Connected</p>
+              <p className="text-4xl font-bold text-white">{connectedUsers}</p>
             </div>
           </div>
         </div>
 
+        {/* グリッド */}
         <div className="grid lg:grid-cols-3 gap-6 mb-6">
           {/* QRコード */}
-          <div className="bg-white/10 backdrop-blur-xl rounded-2xl shadow-2xl p-6 border border-white/20">
-            <h2 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-purple-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
-              </svg>
-              参加用QRコード
-            </h2>
-            <div className="flex justify-center mb-4 bg-white rounded-xl p-4">
-              {eventUrl && (
-                <QRCodeSVG value={eventUrl} size={180} level="H" />
-              )}
+          <div className="glass rounded-2xl p-6">
+            <h2 className="text-sm font-medium text-white/60 uppercase tracking-wider mb-4">QR Code</h2>
+            <div className="qr-container mx-auto w-fit mb-4">
+              {eventUrl && <QRCodeSVG value={eventUrl} size={160} level="H" />}
             </div>
-            <p className="text-xs text-purple-300 text-center break-all bg-white/5 rounded-lg p-2">
+            <p className="text-xs text-white/30 text-center break-all font-mono bg-white/5 rounded-lg p-2">
               {eventUrl}
             </p>
           </div>
 
-          {/* 現在の状態 */}
-          <div className="bg-white/10 backdrop-blur-xl rounded-2xl shadow-2xl p-6 border border-white/20">
-            <h2 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-purple-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" />
-              </svg>
-              現在の色
-            </h2>
+          {/* 現在の色 */}
+          <div className="glass rounded-2xl p-6">
+            <h2 className="text-sm font-medium text-white/60 uppercase tracking-wider mb-4">Current Color</h2>
             <div
-              className="w-full h-36 rounded-xl shadow-inner mb-4 border-4 border-white/20"
-              style={{ backgroundColor: currentColor }}
+              className="w-full h-32 rounded-xl mb-4 border border-white/10 transition-colors"
+              style={{ backgroundColor: currentColor, boxShadow: `0 0 40px ${currentColor}30` }}
             />
             <div className="flex justify-between items-center">
-              <p className="font-mono text-sm text-white bg-white/10 px-3 py-1 rounded-lg">{currentColor}</p>
-              <span className={`px-4 py-2 rounded-full text-sm font-medium ${
+              <span className="font-mono text-sm text-white/60 bg-white/5 px-3 py-1 rounded-lg">{currentColor}</span>
+              <span className={`px-3 py-1 rounded-full text-xs font-medium ${
                 mode === 'program'
-                  ? 'bg-purple-500/30 text-purple-200 border border-purple-400/30'
-                  : 'bg-green-500/30 text-green-200 border border-green-400/30'
+                  ? 'bg-[#8b5cf6]/20 text-[#8b5cf6] border border-[#8b5cf6]/30'
+                  : 'bg-[#00f5ff]/20 text-[#00f5ff] border border-[#00f5ff]/30'
               }`}>
-                {mode === 'program' ? 'プログラム' : '手動'}
+                {mode === 'program' ? 'PROGRAM' : 'MANUAL'}
               </span>
             </div>
           </div>
 
           {/* モード切替 */}
-          <div className="bg-white/10 backdrop-blur-xl rounded-2xl shadow-2xl p-6 border border-white/20">
-            <h2 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-purple-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 9l4-4 4 4m0 6l-4 4-4-4" />
-              </svg>
-              モード切替
-            </h2>
+          <div className="glass rounded-2xl p-6">
+            <h2 className="text-sm font-medium text-white/60 uppercase tracking-wider mb-4">Mode</h2>
             <div className="space-y-3">
               <button
                 onClick={() => changeMode('manual')}
                 disabled={isProgramRunning}
-                className={`w-full py-4 px-6 rounded-xl font-bold transition duration-200 flex items-center justify-center gap-2 ${
+                className={`w-full py-4 px-6 rounded-xl font-semibold transition flex items-center justify-center gap-2 ${
                   mode === 'manual'
-                    ? 'bg-gradient-to-r from-green-500 to-emerald-600 text-white shadow-lg shadow-green-500/30'
-                    : 'bg-white/10 text-white/70 hover:bg-white/20 border border-white/10'
-                } ${isProgramRunning ? 'opacity-50 cursor-not-allowed' : ''}`}
+                    ? 'bg-gradient-to-r from-[#00f5ff] to-[#8b5cf6] text-[#050508]'
+                    : 'bg-white/5 text-white/60 hover:bg-white/10 border border-white/10'
+                } ${isProgramRunning ? 'opacity-40 cursor-not-allowed' : ''}`}
               >
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 11.5V14m0-2.5v-6a1.5 1.5 0 113 0m-3 6a1.5 1.5 0 00-3 0v2a7.5 7.5 0 0015 0v-5a1.5 1.5 0 00-3 0m-6-3V11m0-5.5v-1a1.5 1.5 0 013 0v1m0 0V11m0-5.5a1.5 1.5 0 013 0v3m0 0V11" />
                 </svg>
-                手動モード
+                Manual
               </button>
               <button
                 onClick={() => changeMode('program')}
                 disabled={isProgramRunning}
-                className={`w-full py-4 px-6 rounded-xl font-bold transition duration-200 flex items-center justify-center gap-2 ${
+                className={`w-full py-4 px-6 rounded-xl font-semibold transition flex items-center justify-center gap-2 ${
                   mode === 'program'
-                    ? 'bg-gradient-to-r from-purple-500 to-pink-600 text-white shadow-lg shadow-purple-500/30'
-                    : 'bg-white/10 text-white/70 hover:bg-white/20 border border-white/10'
-                } ${isProgramRunning ? 'opacity-50 cursor-not-allowed' : ''}`}
+                    ? 'bg-gradient-to-r from-[#8b5cf6] to-[#ff00aa] text-white'
+                    : 'bg-white/5 text-white/60 hover:bg-white/10 border border-white/10'
+                } ${isProgramRunning ? 'opacity-40 cursor-not-allowed' : ''}`}
               >
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
-                プログラムモード
+                Program
               </button>
             </div>
           </div>
@@ -804,87 +765,71 @@ export default function AdminPage() {
 
         {/* プログラム制御 */}
         {mode === 'program' && (
-          <div className="bg-white/10 backdrop-blur-xl rounded-2xl shadow-2xl p-6 mb-6 border border-white/20">
-            <h2 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-purple-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              プログラム制御
-            </h2>
+          <div className="glass rounded-2xl p-6 mb-6">
             <div className="flex flex-wrap gap-4 items-center">
               <button
                 onClick={() => setShowProgramEditor(true)}
-                className="bg-white/10 hover:bg-white/20 text-white font-bold py-3 px-6 rounded-xl transition duration-200 border border-white/20 flex items-center gap-2"
+                className="flex items-center gap-2 px-5 py-3 rounded-xl border border-white/20 text-white hover:bg-white/5 transition"
               >
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                 </svg>
-                編集
+                Edit Program
               </button>
 
               {isProgramRunning ? (
                 <button
                   onClick={stopProgram}
-                  className="bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white font-bold py-3 px-8 rounded-xl transition duration-200 shadow-lg shadow-red-500/30 flex items-center gap-2"
+                  className="flex items-center gap-2 px-6 py-3 rounded-xl bg-gradient-to-r from-[#ff0000] to-[#ff00aa] text-white font-semibold transition hover:opacity-90"
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="currentColor" viewBox="0 0 24 24">
                     <rect x="6" y="6" width="12" height="12" rx="2" />
                   </svg>
-                  停止
+                  Stop
                 </button>
               ) : (
                 <button
                   onClick={startProgram}
                   disabled={program.segments.length === 0}
-                  className="bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white font-bold py-3 px-8 rounded-xl transition duration-200 shadow-lg shadow-green-500/30 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="flex items-center gap-2 px-6 py-3 rounded-xl bg-gradient-to-r from-[#00ff88] to-[#00f5ff] text-[#050508] font-semibold transition hover:opacity-90 disabled:opacity-40"
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="currentColor" viewBox="0 0 24 24">
                     <path d="M8 5v14l11-7z" />
                   </svg>
-                  スタート
+                  Start
                 </button>
               )}
 
-              <div className="text-purple-300 bg-white/5 px-4 py-2 rounded-lg">
-                <span className="text-white font-bold">{program.segments.length}</span> セグメント
-                <span className="mx-2 text-purple-400">|</span>
-                <span className="text-white font-bold">{formatTime(program.totalDuration)}</span>
+              <div className="text-white/40 font-mono text-sm bg-white/5 px-4 py-2 rounded-lg">
+                {program.segments.length} segments • {formatTime(program.totalDuration)}
               </div>
             </div>
           </div>
         )}
 
-        {/* 手動モード時のカラーコントロール */}
+        {/* 手動モード：カラーコントロール */}
         {mode === 'manual' && (
-          <div className="bg-white/10 backdrop-blur-xl rounded-2xl shadow-2xl p-6 border border-white/20">
-            <h2 className="text-lg font-semibold text-white mb-6 flex items-center gap-2">
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-purple-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" />
-              </svg>
-              カラーコントロール
-            </h2>
-
+          <div className="glass rounded-2xl p-6">
             {/* プリセットカラー */}
             <div className="mb-8">
-              <h3 className="text-sm font-medium text-purple-300 mb-4 uppercase tracking-wider">プリセット</h3>
+              <h3 className="text-sm font-medium text-white/40 uppercase tracking-wider mb-4">Colors</h3>
               <div className="grid grid-cols-3 sm:grid-cols-5 md:grid-cols-9 gap-3">
                 {PRESET_COLORS.map((preset) => (
                   <button
                     key={preset.color}
                     onClick={() => changeColor(preset.color)}
                     disabled={isProgramRunning}
-                    className={`flex flex-col items-center p-3 rounded-xl transition disabled:opacity-50 ${
+                    className={`group flex flex-col items-center p-3 rounded-xl transition disabled:opacity-40 ${
                       currentColor === preset.color
-                        ? 'bg-white/20 ring-2 ring-purple-400'
+                        ? 'bg-white/10 ring-2 ring-[#00f5ff]'
                         : 'bg-white/5 hover:bg-white/10'
                     }`}
                   >
                     <div
-                      className="w-12 h-12 rounded-xl shadow-lg mb-2 border-2 border-white/20"
-                      style={{ backgroundColor: preset.color }}
+                      className="w-12 h-12 rounded-xl mb-2 border border-white/20 group-hover:scale-105 transition"
+                      style={{ backgroundColor: preset.color, boxShadow: currentColor === preset.color ? `0 0 20px ${preset.color}60` : undefined }}
                     />
-                    <span className="text-xs text-white/80">{preset.name}</span>
+                    <span className="text-xs text-white/50">{preset.name}</span>
                   </button>
                 ))}
               </div>
@@ -892,19 +837,17 @@ export default function AdminPage() {
 
             {/* カスタムカラー */}
             <div className="mb-8">
-              <h3 className="text-sm font-medium text-purple-300 mb-4 uppercase tracking-wider">カスタム</h3>
+              <h3 className="text-sm font-medium text-white/40 uppercase tracking-wider mb-4">Custom</h3>
               <div className="flex gap-6 items-center bg-white/5 rounded-xl p-4">
                 <input
                   type="color"
                   value={currentColor}
                   onChange={(e) => changeColor(e.target.value)}
                   disabled={isProgramRunning}
-                  className="w-24 h-24 rounded-xl cursor-pointer disabled:opacity-50 border-2 border-white/20"
+                  className="w-20 h-20 rounded-xl cursor-pointer disabled:opacity-40 border-2 border-white/20"
                 />
                 <div>
-                  <p className="text-sm text-purple-300 mb-1">
-                    カラーピッカーで自由に色を選択
-                  </p>
+                  <p className="text-sm text-white/40 mb-1">Pick any color</p>
                   <p className="font-mono text-2xl font-bold text-white">{currentColor}</p>
                 </div>
               </div>
@@ -912,21 +855,21 @@ export default function AdminPage() {
 
             {/* エフェクト */}
             <div>
-              <h3 className="text-sm font-medium text-purple-300 mb-4 uppercase tracking-wider">エフェクト</h3>
+              <h3 className="text-sm font-medium text-white/40 uppercase tracking-wider mb-4">Effects</h3>
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
-                {EFFECTS.filter(e => e.type !== 'none').map((effect) => (
+                {EFFECTS.map((effect) => (
                   <button
                     key={effect.type}
                     onClick={() => triggerEffect(effect.type)}
                     disabled={isProgramRunning}
-                    className={`py-4 px-4 rounded-xl font-bold transition duration-200 disabled:opacity-50 ${
+                    className={`py-4 px-4 rounded-xl font-medium transition disabled:opacity-40 ${
                       currentEffect === effect.type
-                        ? 'bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-lg shadow-orange-500/30'
-                        : 'bg-white/10 text-white hover:bg-white/20 border border-white/10'
+                        ? 'bg-gradient-to-r from-[#ff6b00] to-[#ff00aa] text-white'
+                        : 'bg-white/5 text-white hover:bg-white/10 border border-white/10'
                     }`}
                   >
-                    <div className="font-semibold">{effect.name}</div>
-                    <div className="text-xs opacity-70">{effect.description}</div>
+                    <div className="text-xl mb-1">{effect.icon}</div>
+                    <div className="text-sm">{effect.name}</div>
                   </button>
                 ))}
               </div>
