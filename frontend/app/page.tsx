@@ -12,118 +12,128 @@ export default function Home() {
   }, []);
 
   return (
-    <div className="min-h-screen relative overflow-hidden noise-overlay scan-lines">
-      {/* 動的な背景グラデーション */}
-      <div className="fixed inset-0 bg-[#050508]">
-        {/* メイングロー */}
+    <div className="min-h-screen relative overflow-hidden grain-overlay">
+      {/* 背景 - シンプルなグラデーション */}
+      <div className="fixed inset-0 bg-[var(--bg-primary)]">
+        {/* 暖色系のグロー */}
         <div
-          className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] rounded-full animate-pulse-glow"
-          style={{ background: 'radial-gradient(circle, rgba(0,245,255,0.15) 0%, transparent 70%)' }}
+          className="absolute top-0 right-0 w-[600px] h-[600px] opacity-30"
+          style={{
+            background: 'radial-gradient(circle at center, rgba(245, 158, 11, 0.15) 0%, transparent 60%)',
+            transform: 'translate(20%, -30%)',
+          }}
         />
         <div
-          className="absolute top-1/3 left-1/4 w-[600px] h-[600px] rounded-full animate-pulse-glow"
-          style={{ background: 'radial-gradient(circle, rgba(255,0,170,0.1) 0%, transparent 70%)', animationDelay: '1s' }}
+          className="absolute bottom-0 left-0 w-[500px] h-[500px] opacity-20"
+          style={{
+            background: 'radial-gradient(circle at center, rgba(217, 119, 6, 0.2) 0%, transparent 60%)',
+            transform: 'translate(-30%, 30%)',
+          }}
         />
-        <div
-          className="absolute bottom-1/4 right-1/4 w-[500px] h-[500px] rounded-full animate-pulse-glow"
-          style={{ background: 'radial-gradient(circle, rgba(139,92,246,0.12) 0%, transparent 70%)', animationDelay: '2s' }}
-        />
-
-        {/* 浮遊する光の粒子 */}
-        <div className="absolute top-[20%] left-[15%] w-2 h-2 bg-[#00f5ff] rounded-full animate-float opacity-60" style={{ animationDelay: '0s' }} />
-        <div className="absolute top-[60%] left-[80%] w-1.5 h-1.5 bg-[#ff00aa] rounded-full animate-float opacity-50" style={{ animationDelay: '1s' }} />
-        <div className="absolute top-[40%] left-[70%] w-1 h-1 bg-[#8b5cf6] rounded-full animate-float opacity-40" style={{ animationDelay: '2s' }} />
-        <div className="absolute top-[75%] left-[25%] w-2 h-2 bg-[#c4ff00] rounded-full animate-float opacity-30" style={{ animationDelay: '1.5s' }} />
-        <div className="absolute top-[30%] left-[85%] w-1 h-1 bg-[#00f5ff] rounded-full animate-float opacity-50" style={{ animationDelay: '0.5s' }} />
       </div>
 
       {/* メインコンテンツ */}
       <div className="relative z-10 min-h-screen flex flex-col items-center justify-center px-6">
-        <div className={`max-w-md w-full ${mounted ? 'animate-scale-in' : 'opacity-0'}`}>
-
+        <div className="container-app">
           {/* ロゴ・ブランド */}
-          <div className="text-center mb-12">
-            {/* アイコン */}
-            <div className={`inline-block mb-6 ${mounted ? 'animate-slide-up' : 'opacity-0'}`}>
-              <div className="relative">
-                <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-[#00f5ff] via-[#8b5cf6] to-[#ff00aa] p-[2px] animate-neon-flicker">
-                  <div className="w-full h-full rounded-2xl bg-[#0a0a0f] flex items-center justify-center">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10 text-[#00f5ff]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-                    </svg>
-                  </div>
-                </div>
-                {/* グロー効果 */}
-                <div className="absolute inset-0 rounded-2xl bg-gradient-to-br from-[#00f5ff] to-[#ff00aa] opacity-30 blur-xl -z-10" />
-              </div>
+          <div className={`text-center mb-16 ${mounted ? 'animate-fade-in' : 'opacity-0'}`}>
+            {/* ロゴアイコン */}
+            <div className="inline-flex items-center justify-center w-16 h-16 mb-8 rounded-2xl bg-gradient-to-br from-[var(--accent-primary)] to-[var(--accent-tertiary)] glow-amber">
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                className="h-8 w-8 text-[var(--bg-primary)]"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={2}
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"
+                />
+              </svg>
             </div>
 
             {/* タイトル */}
-            <h1
-              className={`text-5xl font-bold tracking-tight mb-3 text-gradient-neon ${mounted ? 'animate-slide-up delay-100' : 'opacity-0'}`}
-              style={{ fontFamily: 'Outfit, sans-serif' }}
-            >
-              CYLINK
+            <h1 className="font-display text-4xl font-bold tracking-tight mb-4 text-gradient">
+              Cylink
             </h1>
 
             {/* サブタイトル */}
-            <p className={`text-white/50 text-lg tracking-wide ${mounted ? 'animate-slide-up delay-200' : 'opacity-0'}`}>
-              スマホをライトに。会場を一つに。
+            <p className="text-[var(--text-secondary)] text-lg">
+              スマホがライトになる。
+              <br />
+              会場がひとつになる。
             </p>
           </div>
 
-          {/* ボタングループ */}
-          <div className={`space-y-4 ${mounted ? 'animate-slide-up delay-300' : 'opacity-0'}`}>
-            {/* 管理者ボタン */}
+          {/* アクションボタン */}
+          <div className={`space-y-4 ${mounted ? 'animate-slide-up delay-150' : 'opacity-0'}`}>
+            {/* イベント作成 */}
             <button
               onClick={() => router.push('/admin')}
-              className="group relative w-full overflow-hidden rounded-2xl p-[1px] transition-all duration-500 hover:scale-[1.02]"
+              className="btn btn-primary btn-lg btn-full"
             >
-              <div className="absolute inset-0 bg-gradient-to-r from-[#00f5ff] via-[#8b5cf6] to-[#ff00aa] opacity-80 group-hover:opacity-100 transition-opacity" />
-              <div className="relative flex items-center justify-center gap-3 bg-[#0a0a0f] rounded-2xl px-8 py-5 transition-all group-hover:bg-[#0a0a0f]/80">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-[#00f5ff] group-hover:text-white transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-                </svg>
-                <span className="font-semibold text-lg bg-gradient-to-r from-[#00f5ff] to-[#8b5cf6] bg-clip-text text-transparent group-hover:from-white group-hover:to-white transition-all">
-                  イベントを作成
-                </span>
-              </div>
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                className="h-5 w-5"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={2}
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+              </svg>
+              <span>イベントを作成</span>
             </button>
 
-            {/* 参加者ボタン */}
+            {/* イベント参加 */}
             <button
               onClick={() => router.push('/join')}
-              className="group relative w-full overflow-hidden rounded-2xl border border-white/10 hover:border-[#00f5ff]/50 transition-all duration-500 hover:scale-[1.02]"
+              className="btn btn-secondary btn-lg btn-full"
             >
-              <div className="absolute inset-0 bg-gradient-to-r from-[#00f5ff]/5 to-[#ff00aa]/5 opacity-0 group-hover:opacity-100 transition-opacity" />
-              <div className="relative flex items-center justify-center gap-3 px-8 py-5">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-white/60 group-hover:text-[#00f5ff] transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1" />
-                </svg>
-                <span className="font-semibold text-lg text-white/80 group-hover:text-white transition-colors">
-                  イベントに参加
-                </span>
-              </div>
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                className="h-5 w-5"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={2}
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1"
+                />
+              </svg>
+              <span>イベントに参加</span>
             </button>
           </div>
 
-          {/* 説明テキスト */}
-          <div className={`mt-12 text-center ${mounted ? 'animate-slide-up delay-400' : 'opacity-0'}`}>
-            <div className="flex items-center justify-center gap-8 text-sm text-white/30">
-              <div className="flex items-center gap-2">
-                <div className="w-1.5 h-1.5 rounded-full bg-[#00f5ff]" />
-                <span>リアルタイム同期</span>
+          {/* フィーチャー */}
+          <div className={`mt-16 ${mounted ? 'animate-slide-up delay-300' : 'opacity-0'}`}>
+            <div className="grid grid-cols-3 gap-4 text-center">
+              <div>
+                <div className="text-2xl font-bold text-gradient mb-1">500+</div>
+                <div className="text-xs text-[var(--text-muted)]">同時接続</div>
               </div>
-              <div className="flex items-center gap-2">
-                <div className="w-1.5 h-1.5 rounded-full bg-[#ff00aa]" />
-                <span>500人同時接続</span>
+              <div>
+                <div className="text-2xl font-bold text-gradient mb-1">0.1s</div>
+                <div className="text-xs text-[var(--text-muted)]">遅延</div>
+              </div>
+              <div>
+                <div className="text-2xl font-bold text-gradient mb-1">無料</div>
+                <div className="text-xs text-[var(--text-muted)]">利用料</div>
               </div>
             </div>
           </div>
 
-          {/* バージョン */}
-          <div className={`mt-16 text-center ${mounted ? 'animate-slide-up delay-500' : 'opacity-0'}`}>
-            <span className="font-mono text-xs text-white/20 tracking-widest">v1.0.0</span>
+          {/* フッター */}
+          <div className={`mt-20 text-center ${mounted ? 'animate-fade-in delay-500' : 'opacity-0'}`}>
+            <div className="text-xs text-[var(--text-muted)] font-mono tracking-wider">
+              v1.0.0
+            </div>
           </div>
         </div>
       </div>

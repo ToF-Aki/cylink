@@ -395,39 +395,41 @@ export default function EventPage({ params }: { params: Promise<{ sessionId: str
 
   if (error) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#050508] p-4 noise-overlay">
-        <div className="fixed inset-0">
+      <div className="min-h-screen relative overflow-hidden grain-overlay">
+        {/* 背景 */}
+        <div className="fixed inset-0 bg-[var(--bg-primary)]">
           <div
-            className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] rounded-full"
-            style={{ background: 'radial-gradient(circle, rgba(255,0,100,0.2) 0%, transparent 70%)' }}
+            className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] opacity-20"
+            style={{
+              background: 'radial-gradient(circle at center, rgba(239, 68, 68, 0.3) 0%, transparent 60%)',
+            }}
           />
         </div>
 
-        <div className={`relative max-w-md w-full ${mounted ? 'animate-scale-in' : 'opacity-0'}`}>
-          <div className="glass-strong rounded-3xl p-8 text-center">
-            <div className="w-16 h-16 mx-auto mb-6 rounded-2xl bg-gradient-to-br from-[#ff0066] to-[#ff00aa] p-[2px]">
-              <div className="w-full h-full rounded-2xl bg-[#0a0a0f] flex items-center justify-center">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-[#ff0066]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        {/* エラーコンテンツ */}
+        <div className="relative z-10 min-h-screen flex items-center justify-center px-6">
+          <div className={`container-app ${mounted ? 'animate-scale-in' : 'opacity-0'}`}>
+            <div className="card-elevated p-8 text-center">
+              {/* エラーアイコン */}
+              <div className="inline-flex items-center justify-center w-16 h-16 mb-6 rounded-2xl bg-[var(--error)]/10">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-[var(--error)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                 </svg>
               </div>
-            </div>
 
-            <h1 className="text-2xl font-bold text-white mb-3">エラー</h1>
-            <p className="text-white/60 mb-8">{error}</p>
+              <h1 className="font-display text-2xl font-bold mb-3">エラー</h1>
+              <p className="text-[var(--text-secondary)] mb-8">{error}</p>
 
-            <button
-              onClick={() => router.push('/')}
-              className="group relative w-full overflow-hidden rounded-2xl p-[1px] transition-all duration-500 hover:scale-[1.02]"
-            >
-              <div className="absolute inset-0 bg-gradient-to-r from-[#00f5ff] via-[#8b5cf6] to-[#ff00aa] opacity-80 group-hover:opacity-100 transition-opacity" />
-              <div className="relative flex items-center justify-center gap-3 bg-[#0a0a0f] rounded-2xl px-8 py-4 transition-all group-hover:bg-[#0a0a0f]/80">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-[#00f5ff]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <button
+                onClick={() => router.push('/')}
+                className="btn btn-primary btn-lg btn-full"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
                 </svg>
-                <span className="font-semibold text-white">ホームに戻る</span>
-              </div>
-            </button>
+                <span>ホームに戻る</span>
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -449,38 +451,48 @@ export default function EventPage({ params }: { params: Promise<{ sessionId: str
             className={`
               inline-flex items-center gap-2 px-4 py-2 rounded-full
               backdrop-blur-xl transition-all duration-500
-              ${mounted ? 'animate-slide-up' : 'opacity-0'}
+              ${mounted ? 'animate-slide-down' : 'opacity-0'}
             `}
             style={{
-              background: isDarkBg ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)',
-              border: `1px solid ${isDarkBg ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'}`,
+              background: isDarkBg ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)',
+              border: `1px solid ${isDarkBg ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.1)'}`,
             }}
           >
+            {/* ステータスドット */}
             <div className="relative">
               <div
-                className={`w-2.5 h-2.5 rounded-full ${isConnected ? 'bg-[#00f5ff]' : 'bg-[#ff0066]'}`}
+                className={`w-2.5 h-2.5 rounded-full transition-colors duration-300`}
+                style={{
+                  background: isConnected ? '#22c55e' : '#ef4444',
+                  boxShadow: isConnected ? '0 0 8px #22c55e' : '0 0 8px #ef4444',
+                }}
               />
               {isConnected && (
-                <div className="absolute inset-0 w-2.5 h-2.5 rounded-full bg-[#00f5ff] animate-ping opacity-75" />
+                <div
+                  className="absolute inset-0 w-2.5 h-2.5 rounded-full animate-ping opacity-75"
+                  style={{ background: '#22c55e' }}
+                />
               )}
             </div>
 
+            {/* ステータステキスト */}
             <span
-              className="text-sm font-medium"
+              className="text-sm font-medium font-display tracking-wide"
               style={{ color: textColor }}
             >
               {isConnected
-                ? (isProgramRunning ? 'PROGRAM RUNNING' : 'CONNECTED')
-                : 'CONNECTING...'
+                ? (isProgramRunning ? 'SYNC' : 'LIVE')
+                : '接続中...'
               }
             </span>
 
-            {mode === 'program' && (
+            {/* プログラムモードバッジ */}
+            {mode === 'program' && isProgramRunning && (
               <div
-                className="ml-1 px-2 py-0.5 rounded text-xs font-mono font-semibold"
+                className="ml-1 px-2 py-0.5 rounded-md text-xs font-mono font-semibold"
                 style={{
-                  background: isDarkBg ? 'rgba(139,92,246,0.3)' : 'rgba(139,92,246,0.2)',
-                  color: isDarkBg ? '#c4b5fd' : '#7c3aed',
+                  background: isDarkBg ? 'rgba(245,158,11,0.25)' : 'rgba(245,158,11,0.2)',
+                  color: isDarkBg ? '#fbbf24' : '#d97706',
                 }}
               >
                 AUTO
@@ -495,16 +507,17 @@ export default function EventPage({ params }: { params: Promise<{ sessionId: str
         <div className="fixed inset-0 flex items-center justify-center z-10 pointer-events-none">
           <div className={`text-center ${mounted ? 'animate-scale-in' : 'opacity-0'}`}>
             <div className="relative inline-block">
+              {/* 音符アイコン */}
               <svg
                 xmlns="http://www.w3.org/2000/svg"
-                className="w-24 h-24 mx-auto"
+                className="w-20 h-20 mx-auto animate-float"
                 fill="none"
                 viewBox="0 0 24 24"
                 stroke={textColor}
                 strokeWidth={1}
                 style={{
-                  opacity: 0.4,
-                  filter: isDarkBg ? 'drop-shadow(0 0 20px rgba(255,255,255,0.3))' : 'drop-shadow(0 0 20px rgba(0,0,0,0.2))',
+                  opacity: 0.35,
+                  filter: isDarkBg ? 'drop-shadow(0 0 30px rgba(255,255,255,0.2))' : 'drop-shadow(0 0 30px rgba(0,0,0,0.1))',
                 }}
               >
                 <path
@@ -516,10 +529,10 @@ export default function EventPage({ params }: { params: Promise<{ sessionId: str
             </div>
 
             <p
-              className="mt-4 text-sm font-medium tracking-widest uppercase"
+              className="mt-6 text-sm font-display font-medium tracking-widest uppercase"
               style={{
                 color: textColor,
-                opacity: 0.5,
+                opacity: 0.4,
               }}
             >
               Synchronized
@@ -531,22 +544,24 @@ export default function EventPage({ params }: { params: Promise<{ sessionId: str
       {/* 下部: イベント情報とシェアボタン */}
       <div className="fixed bottom-0 left-0 right-0 z-50 pb-[env(safe-area-inset-bottom)]">
         <div
-          className="px-6 pt-16 pb-8"
+          className="px-6 pt-20 pb-8"
           style={{
             background: isDarkBg
-              ? 'linear-gradient(to top, rgba(0,0,0,0.4) 0%, transparent 100%)'
-              : 'linear-gradient(to top, rgba(255,255,255,0.3) 0%, transparent 100%)',
+              ? 'linear-gradient(to top, rgba(0,0,0,0.5) 0%, transparent 100%)'
+              : 'linear-gradient(to top, rgba(255,255,255,0.4) 0%, transparent 100%)',
           }}
         >
-          <div className={`text-center mb-4 ${mounted ? 'animate-slide-up delay-100' : 'opacity-0'}`}>
+          {/* イベント名 */}
+          <div className={`text-center mb-5 ${mounted ? 'animate-slide-up delay-100' : 'opacity-0'}`}>
             <p
-              className="text-sm font-medium tracking-wide"
-              style={{ color: textColor, opacity: 0.8 }}
+              className="text-base font-display font-medium tracking-wide"
+              style={{ color: textColor, opacity: 0.85 }}
             >
               {eventName || 'Event'}
             </p>
           </div>
 
+          {/* シェアボタン */}
           <button
             onClick={handleShare}
             className={`
@@ -556,11 +571,11 @@ export default function EventPage({ params }: { params: Promise<{ sessionId: str
             `}
             style={{
               background: isDarkBg
-                ? 'rgba(255,255,255,0.15)'
-                : 'rgba(0,0,0,0.1)',
+                ? 'rgba(255,255,255,0.12)'
+                : 'rgba(0,0,0,0.08)',
               backdropFilter: 'blur(20px)',
               WebkitBackdropFilter: 'blur(20px)',
-              border: `1px solid ${isDarkBg ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.1)'}`,
+              border: `1px solid ${isDarkBg ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.1)'}`,
             }}
           >
             <div className="flex items-center justify-center gap-3 px-8 py-4">
@@ -579,21 +594,22 @@ export default function EventPage({ params }: { params: Promise<{ sessionId: str
                 />
               </svg>
               <span
-                className="font-semibold text-base tracking-wide"
+                className="font-display font-semibold text-base tracking-wide"
                 style={{ color: textColor }}
               >
-                Share
+                シェア
               </span>
             </div>
           </button>
 
+          {/* コピー完了メッセージ */}
           {showShareMessage && (
             <div className="mt-4 text-center animate-scale-in">
               <span
                 className="inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium"
                 style={{
-                  background: isDarkBg ? 'rgba(0,245,255,0.2)' : 'rgba(0,200,200,0.2)',
-                  color: isDarkBg ? '#00f5ff' : '#006666',
+                  background: isDarkBg ? 'rgba(34,197,94,0.2)' : 'rgba(34,197,94,0.15)',
+                  color: isDarkBg ? '#4ade80' : '#16a34a',
                   backdropFilter: 'blur(10px)',
                 }}
               >
@@ -607,15 +623,15 @@ export default function EventPage({ params }: { params: Promise<{ sessionId: str
         </div>
       </div>
 
-      {/* CYLINKブランディング */}
+      {/* ブランディング */}
       <div
-        className={`fixed bottom-[env(safe-area-inset-bottom)] right-4 pb-2 z-40 pointer-events-none ${mounted ? 'animate-slide-up delay-300' : 'opacity-0'}`}
+        className={`fixed bottom-[env(safe-area-inset-bottom)] right-4 pb-2 z-40 pointer-events-none ${mounted ? 'animate-fade-in delay-500' : 'opacity-0'}`}
       >
         <span
           className="font-mono text-xs tracking-widest"
           style={{
             color: textColor,
-            opacity: 0.2,
+            opacity: 0.15,
           }}
         >
           CYLINK
