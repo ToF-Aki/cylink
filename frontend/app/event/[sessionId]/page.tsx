@@ -31,26 +31,39 @@ const RAINBOW_COLORS = [
   '#0000FF', '#4B0082', '#9400D3'
 ];
 
+// ユーザーが選べる色
+const USER_COLORS = [
+  '#FF0000', // 赤
+  '#FF7F00', // オレンジ
+  '#FFFF00', // 黄
+  '#00FF00', // 緑
+  '#00FFFF', // シアン
+  '#0000FF', // 青
+  '#FF00FF', // マゼンタ
+  '#FFFFFF', // 白
+];
+
 export default function EventPage({ params }: { params: Promise<{ sessionId: string }> }) {
   const resolvedParams = use(params);
   const router = useRouter();
   const [displayColor, setDisplayColor] = useState('#FFFFFF');
   const [baseColor, setBaseColor] = useState('#FFFFFF');
-  const [socket, setSocket] = useState<Socket | null>(null);
+  const [, setSocket] = useState<Socket | null>(null);
   const [isConnected, setIsConnected] = useState(false);
-  const [eventName, setEventName] = useState('');
   const [error, setError] = useState('');
-  const [showShareMessage, setShowShareMessage] = useState(false);
   const [currentEffect, setCurrentEffect] = useState<EffectType>('none');
   const [mode, setMode] = useState<SessionMode>('manual');
   const [isProgramRunning, setIsProgramRunning] = useState(false);
   const [isControlLocked, setIsControlLocked] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const [userSelectedColor, setUserSelectedColor] = useState('#FFFFFF');
+  const [isStrobeActive, setIsStrobeActive] = useState(false);
 
   // エフェクト用のref
   const effectIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const fadeAnimationRef = useRef<number | null>(null);
   const rainbowIndexRef = useRef(0);
+  const userStrobeRef = useRef<NodeJS.Timeout | null>(null);
 
   // プログラム再生用
   const programRef = useRef<Program | null>(null);
@@ -72,6 +85,15 @@ export default function EventPage({ params }: { params: Promise<{ sessionId: str
       cancelAnimationFrame(fadeAnimationRef.current);
       fadeAnimationRef.current = null;
     }
+  }, []);
+
+  // ユーザーストロボをクリア
+  const clearUserStrobe = useCallback(() => {
+    if (userStrobeRef.current) {
+      clearInterval(userStrobeRef.current);
+      userStrobeRef.current = null;
+    }
+    setIsStrobeActive(false);
   }, []);
 
   // フェードエフェクト
@@ -226,6 +248,28 @@ export default function EventPage({ params }: { params: Promise<{ sessionId: str
     setDisplayColor('#FFFFFF');
   }, [clearEffects]);
 
+  // ユーザーが色を選択
+  const handleUserColorSelect = (color: string) => {
+    clearUserStrobe();
+    setUserSelectedColor(color);
+    setDisplayColor(color);
+  };
+
+  // ユーザーがストロボを切り替え
+  const handleUserStrobe = () => {
+    if (isStrobeActive) {
+      clearUserStrobe();
+      setDisplayColor(userSelectedColor);
+    } else {
+      setIsStrobeActive(true);
+      let isOn = true;
+      userStrobeRef.current = setInterval(() => {
+        isOn = !isOn;
+        setDisplayColor(isOn ? userSelectedColor : '#000000');
+      }, 50);
+    }
+  };
+
   useEffect(() => {
     const sessionId = resolvedParams.sessionId;
 
@@ -235,8 +279,6 @@ export default function EventPage({ params }: { params: Promise<{ sessionId: str
         if (!response.ok) {
           throw new Error('セッションが見つかりません');
         }
-        const data = await response.json();
-        setEventName(data.session.name);
       } catch (err) {
         setError('イベントが見つかりませんでした');
         console.error(err);
@@ -285,21 +327,26 @@ export default function EventPage({ params }: { params: Promise<{ sessionId: str
       serverTimeOffsetRef.current = Date.now() - data.serverTime;
 
       if (data.isProgramRunning && data.program && data.programStartTime) {
+        clearUserStrobe();
         startProgram(data.program, data.programStartTime);
-      } else {
+      } else if (data.mode === 'program') {
+        clearUserStrobe();
         applyEffect(data.color, data.effect);
-        setIsControlLocked(data.mode === 'program' && data.isProgramRunning);
+        setIsControlLocked(data.isProgramRunning);
       }
+      // manualモードの場合はユーザー操作を優先
     });
 
     newSocket.on('color-change', (data: { color: string; effect?: EffectType }) => {
-      if (!isProgramRunning) {
+      if (!isProgramRunning && mode === 'program') {
+        clearUserStrobe();
         applyEffect(data.color, data.effect || 'none');
       }
     });
 
     newSocket.on('trigger-effect', (data: { effectType: EffectType }) => {
-      if (!isProgramRunning) {
+      if (!isProgramRunning && mode === 'program') {
+        clearUserStrobe();
         setCurrentEffect(data.effectType);
         applyEffect(baseColor, data.effectType);
 
@@ -314,10 +361,14 @@ export default function EventPage({ params }: { params: Promise<{ sessionId: str
       setMode(data.mode);
       if (data.mode === 'manual') {
         setIsControlLocked(false);
+        // manualモードに切り替わったらユーザー選択色を表示
+        clearUserStrobe();
+        setDisplayColor(userSelectedColor);
       }
     });
 
     newSocket.on('program-start', (data: { program: Program; startTime: number }) => {
+      clearUserStrobe();
       startProgram(data.program, data.startTime);
     });
 
@@ -348,6 +399,7 @@ export default function EventPage({ params }: { params: Promise<{ sessionId: str
     return () => {
       newSocket.disconnect();
       clearEffects();
+      clearUserStrobe();
       if (programAnimationRef.current) {
         cancelAnimationFrame(programAnimationRef.current);
       }
@@ -355,31 +407,7 @@ export default function EventPage({ params }: { params: Promise<{ sessionId: str
         wakeLock.release();
       }
     };
-  }, [resolvedParams.sessionId, applyEffect, startProgram, stopProgram, clearEffects, isProgramRunning, baseColor]);
-
-  const handleShare = async () => {
-    const shareUrl = typeof window !== 'undefined' ? window.location.href : '';
-
-    if (navigator.share) {
-      try {
-        await navigator.share({
-          title: `${eventName} - Cylink`,
-          text: `${eventName}のライトイベントに参加しよう！`,
-          url: shareUrl,
-        });
-      } catch (err) {
-        console.log('シェアキャンセル:', err);
-      }
-    } else {
-      try {
-        await navigator.clipboard.writeText(shareUrl);
-        setShowShareMessage(true);
-        setTimeout(() => setShowShareMessage(false), 2000);
-      } catch (err) {
-        console.error('コピー失敗:', err);
-      }
-    }
-  };
+  }, [resolvedParams.sessionId, applyEffect, startProgram, stopProgram, clearEffects, clearUserStrobe, isProgramRunning, baseColor, mode, userSelectedColor]);
 
   // テキスト色の決定（明るい背景には暗いテキスト）
   const getTextColor = (bgColor: string) => {
@@ -396,7 +424,6 @@ export default function EventPage({ params }: { params: Promise<{ sessionId: str
   if (error) {
     return (
       <div className="min-h-screen relative overflow-hidden grain-overlay">
-        {/* 背景 */}
         <div className="fixed inset-0 bg-[var(--bg-primary)]">
           <div
             className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] opacity-20"
@@ -406,17 +433,9 @@ export default function EventPage({ params }: { params: Promise<{ sessionId: str
           />
         </div>
 
-        {/* エラーコンテンツ */}
         <div className="relative z-10 min-h-screen flex items-center justify-center px-6">
           <div className={`container-app ${mounted ? 'animate-scale-in' : 'opacity-0'}`}>
             <div className="card-elevated p-8 text-center">
-              {/* エラーアイコン */}
-              <div className="inline-flex items-center justify-center w-16 h-16 mb-6 rounded-2xl bg-[var(--error)]/10">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-[var(--error)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                </svg>
-              </div>
-
               <h1 className="font-display text-2xl font-bold mb-3">エラー</h1>
               <p className="text-[var(--text-secondary)] mb-8">{error}</p>
 
@@ -424,9 +443,6 @@ export default function EventPage({ params }: { params: Promise<{ sessionId: str
                 onClick={() => router.push('/')}
                 className="btn btn-primary btn-lg btn-full"
               >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
-                </svg>
                 <span>ホームに戻る</span>
               </button>
             </div>
@@ -441,7 +457,7 @@ export default function EventPage({ params }: { params: Promise<{ sessionId: str
       className="fullscreen-light"
       style={{
         backgroundColor: displayColor,
-        transition: currentEffect === 'none' && !isProgramRunning ? 'background-color 0.3s ease' : 'none'
+        transition: currentEffect === 'none' && !isProgramRunning && !isStrobeActive ? 'background-color 0.3s ease' : 'none'
       }}
     >
       {/* 上部: 接続状況バッジ */}
@@ -458,7 +474,6 @@ export default function EventPage({ params }: { params: Promise<{ sessionId: str
               border: `1px solid ${isDarkBg ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.1)'}`,
             }}
           >
-            {/* ステータスドット */}
             <div className="relative">
               <div
                 className={`w-2.5 h-2.5 rounded-full transition-colors duration-300`}
@@ -475,7 +490,6 @@ export default function EventPage({ params }: { params: Promise<{ sessionId: str
               )}
             </div>
 
-            {/* ステータステキスト */}
             <span
               className="text-sm font-medium font-display tracking-wide"
               style={{ color: textColor }}
@@ -486,7 +500,6 @@ export default function EventPage({ params }: { params: Promise<{ sessionId: str
               }
             </span>
 
-            {/* プログラムモードバッジ */}
             {mode === 'program' && isProgramRunning && (
               <div
                 className="ml-1 px-2 py-0.5 rounded-md text-xs font-mono font-semibold"
@@ -506,30 +519,8 @@ export default function EventPage({ params }: { params: Promise<{ sessionId: str
       {isControlLocked && (
         <div className="fixed inset-0 flex items-center justify-center z-10 pointer-events-none">
           <div className={`text-center ${mounted ? 'animate-scale-in' : 'opacity-0'}`}>
-            <div className="relative inline-block">
-              {/* 音符アイコン */}
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                className="w-20 h-20 mx-auto animate-float"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke={textColor}
-                strokeWidth={1}
-                style={{
-                  opacity: 0.35,
-                  filter: isDarkBg ? 'drop-shadow(0 0 30px rgba(255,255,255,0.2))' : 'drop-shadow(0 0 30px rgba(0,0,0,0.1))',
-                }}
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3"
-                />
-              </svg>
-            </div>
-
             <p
-              className="mt-6 text-sm font-display font-medium tracking-widest uppercase"
+              className="text-sm font-display font-medium tracking-widest uppercase"
               style={{
                 color: textColor,
                 opacity: 0.4,
@@ -541,102 +532,55 @@ export default function EventPage({ params }: { params: Promise<{ sessionId: str
         </div>
       )}
 
-      {/* 下部: イベント情報とシェアボタン */}
-      <div className="fixed bottom-0 left-0 right-0 z-50 pb-[env(safe-area-inset-bottom)]">
-        <div
-          className="px-6 pt-20 pb-8"
-          style={{
-            background: isDarkBg
-              ? 'linear-gradient(to top, rgba(0,0,0,0.5) 0%, transparent 100%)'
-              : 'linear-gradient(to top, rgba(255,255,255,0.4) 0%, transparent 100%)',
-          }}
-        >
-          {/* イベント名 */}
-          <div className={`text-center mb-5 ${mounted ? 'animate-slide-up delay-100' : 'opacity-0'}`}>
-            <p
-              className="text-base font-display font-medium tracking-wide"
-              style={{ color: textColor, opacity: 0.85 }}
-            >
-              {eventName || 'Event'}
-            </p>
-          </div>
-
-          {/* シェアボタン */}
-          <button
-            onClick={handleShare}
-            className={`
-              group relative w-full overflow-hidden rounded-2xl transition-all duration-300
-              active:scale-[0.98] pointer-events-auto
-              ${mounted ? 'animate-slide-up delay-200' : 'opacity-0'}
-            `}
+      {/* 下部: manualモード時のコントロール */}
+      {mode === 'manual' && !isControlLocked && (
+        <div className="fixed bottom-0 left-0 right-0 z-50 pb-[env(safe-area-inset-bottom)]">
+          <div
+            className={`px-4 pt-8 pb-6 ${mounted ? 'animate-slide-up' : 'opacity-0'}`}
             style={{
               background: isDarkBg
-                ? 'rgba(255,255,255,0.12)'
-                : 'rgba(0,0,0,0.08)',
-              backdropFilter: 'blur(20px)',
-              WebkitBackdropFilter: 'blur(20px)',
-              border: `1px solid ${isDarkBg ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.1)'}`,
+                ? 'linear-gradient(to top, rgba(0,0,0,0.6) 0%, transparent 100%)'
+                : 'linear-gradient(to top, rgba(255,255,255,0.5) 0%, transparent 100%)',
             }}
           >
-            <div className="flex items-center justify-center gap-3 px-8 py-4">
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                className="w-5 h-5 transition-transform group-hover:scale-110"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke={textColor}
-                strokeWidth={2}
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"
+            {/* 色選択ボタン */}
+            <div className="flex justify-center gap-3 mb-4 flex-wrap">
+              {USER_COLORS.map((color) => (
+                <button
+                  key={color}
+                  onClick={() => handleUserColorSelect(color)}
+                  className={`w-12 h-12 rounded-full transition-all duration-200 active:scale-95 ${
+                    userSelectedColor === color ? 'scale-110' : ''
+                  }`}
+                  style={{
+                    backgroundColor: color,
+                    boxShadow: userSelectedColor === color
+                      ? `0 0 0 2px ${displayColor}, 0 0 0 4px ${textColor}`
+                      : `0 2px 8px ${color}66`,
+                  }}
                 />
-              </svg>
-              <span
-                className="font-display font-semibold text-base tracking-wide"
-                style={{ color: textColor }}
-              >
-                シェア
-              </span>
+              ))}
             </div>
-          </button>
 
-          {/* コピー完了メッセージ */}
-          {showShareMessage && (
-            <div className="mt-4 text-center animate-scale-in">
-              <span
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium"
-                style={{
-                  background: isDarkBg ? 'rgba(34,197,94,0.2)' : 'rgba(34,197,94,0.15)',
-                  color: isDarkBg ? '#4ade80' : '#16a34a',
-                  backdropFilter: 'blur(10px)',
-                }}
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                </svg>
-                URLをコピーしました
-              </span>
-            </div>
-          )}
+            {/* ストロボボタン */}
+            <button
+              onClick={handleUserStrobe}
+              className={`w-full py-4 rounded-2xl font-display font-semibold text-base tracking-wide transition-all duration-200 active:scale-[0.98] ${
+                isStrobeActive ? 'animate-pulse' : ''
+              }`}
+              style={{
+                background: isStrobeActive
+                  ? (isDarkBg ? 'rgba(255,255,255,0.25)' : 'rgba(0,0,0,0.15)')
+                  : (isDarkBg ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)'),
+                color: textColor,
+                border: `1px solid ${isDarkBg ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.1)'}`,
+              }}
+            >
+              {isStrobeActive ? 'ストロボ停止' : 'ストロボ'}
+            </button>
+          </div>
         </div>
-      </div>
-
-      {/* ブランディング */}
-      <div
-        className={`fixed bottom-[env(safe-area-inset-bottom)] right-4 pb-2 z-40 pointer-events-none ${mounted ? 'animate-fade-in delay-500' : 'opacity-0'}`}
-      >
-        <span
-          className="font-mono text-xs tracking-widest"
-          style={{
-            color: textColor,
-            opacity: 0.15,
-          }}
-        >
-          CYLINK
-        </span>
-      </div>
+      )}
     </div>
   );
 }
